@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw, ImageFont # You'll need to install Pillow
 
 # Replace 'YOUR_BOT_TOKEN' with your actual bot token
 BOT_TOKEN = 'YOUR_BOT_TOKEN'
-bot = telebot.TeleBot(6590125561:AAHbumkUHB5654HOPGGaIzIOn5OyhgiQLV4)
+bot = telebot.TeleBot("6590125561:AAHbumkUHB5654HOPGGaIzIOn5OyhgiQLV4")
 
 # Placeholder for the image processing function. You'll need to implement this!
 def add_text_to_image(image_path, text):
