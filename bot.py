@@ -3,7 +3,7 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 # Replace '6590125561:AAFcDw2FhMA8FMBDeERyjgYsNWnQqDsuo9U' with your actual bot token
-BOT_TOKEN = 'YOUR_BOT_TOKEN'
+BOT_TOKEN = '6590125561:AAFcDw2FhMA8FMBDeERyjgYsNWnQqDsuo9U'
 bot = telebot.TeleBot(BOT_TOKEN)
 
 user_data = {} # Dictionary to store user data
