@@ -7,23 +7,32 @@ import textwrap
 BOT_TOKEN = '6590125561:AAFcDw2FhMA8FMBDeERyjgYsNWnQqDsuo9U' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Significantly increased default font sizes
-default_font_size_center = 80 # Increased
-default_font_size_above_below = 50 # Increased
-center_text_size = default_font_size_center
-above_text_size = default_font_size_above_below
-below_text_size = default_font_size_above_below
+# Default settings
+default_font_size_center = 80
+default_font_size_above_below = 50
+default_text_color_center = (255, 0, 0) # Red
+default_text_color_above = (0, 0, 255) # Blue
+default_text_color_below = (0, 255, 0) # Green
+default_wrap_width = 20
+min_font_size = 10
+max_font_size = 150
+min_image_width = 200
+min_image_height = 100
+above_y_offset = 20
+below_y_offset = 20
 
+# User data structure (using chat ID as key)
 user_data = {}
 
-def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size):
+
+def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size,
+                      center_color, above_color, below_color):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
         width, height = img.size
 
-        # Check for minimum image dimensions
-        if width < 200 or height < 100:
+        if width < min_image_width or height < min_image_height:
             return "Image is too small. Please provide a larger image."
 
         try:
@@ -34,92 +43,160 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
             font_above_below = ImageFont.load_default()
             print("Default font used.")
 
-        # Adjust text wrapping for better fit
-        center_text = "\n".join(textwrap.wrap(center_text, width=int(width/center_size)))
-        above_text = "\n".join(textwrap.wrap(above_text, width=int(width/above_size))) if above_text else ""
-        below_text = "\n".join(textwrap.wrap(below_text, width=int(width/above_size))) if below_text else ""
+        # Wrap text dynamically
+        center_text = "\n".join(textwrap.wrap(center_text, width=int(width / center_size)))
+        above_text = "\n".join(textwrap.wrap(above_text, width=int(width / above_size))) if above_text else ""
+        below_text = "\n".join(textwrap.wrap(below_text, width=int(width / above_size))) if below_text else ""
 
-
-        # Center text
+        # Calculate text positions
         center_text_size = draw.multiline_textsize(center_text, font=font_center)
         center_x = (width - center_text_size[0]) // 2
         center_y = (height - center_text_size[1]) // 2
-        draw.multiline_text((center_x, center_y), center_text, font=font_center, fill=(255, 0, 0), align="center")
 
-        # Adjust vertical positioning to be closer to edges
-        above_y_offset = 20 # Adjust as needed
-        below_y_offset = 20 # Adjust as needed
+        draw.multiline_text((center_x, center_y), center_text, font=font_center, fill=center_color, align="center")
 
-        # Above text
         if above_text:
             above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
             above_x = (width - above_text_size[0]) // 2
             above_y = above_y_offset
-            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255), align="center")
+            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=above_color, align="center")
 
-        # Below text
         if below_text:
             below_text_size = draw.multiline_textsize(below_text, font=font_above_below)
             below_x = (width - below_text_size[0]) // 2
             below_y = height - below_text_size[1] - below_y_offset
-            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0), align="center")
+            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=below_color, align="center")
 
         timestamp = int(time.time())
         output_filename = f"output_{timestamp}.jpg"
         img.save(output_filename)
         return output_filename
     except Exception as e:
-        return f"Error processing image: {str(e)}" # More informative error message
+        return f"Error: {str(e)}"
 
 
-# ... (The rest of the code up to `create_keyboard` remains almost the same, except for the initial values)
-# The only significant change is handling the 'generate' button callback. The rest remains the same.
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    bot.reply_to(message, "Send me an image.")
+    bot.register_next_step_handler(message, process_image)
 
+
+def process_image(message):
+    if message.photo:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        image_filename = "temp_image.jpg"
+        with open(image_filename, 'wb') as new_file:
+            new_file.write(downloaded_file)
+
+        # Store initial user data (including default values)
+        user_data[message.chat.id] = {
+            'image': image_filename,
+            'center_text': '',
+            'above_text': '',
+            'below_text': '',
+            'center_size': default_font_size_center,
+            'above_size': default_font_size_above_below,
+            'below_size': default_font_size_above_below,
+            'center_color': default_text_color_center,
+            'above_color': default_text_color_above,
+            'below_color': default_text_color_below,
+            'wrap_width': default_wrap_width
+        }
+        bot.reply_to(message, "Enter the text for the center:")
+        bot.register_next_step_handler(message, get_center_text)
+    else:
+        bot.reply_to(message, "That's not an image!")
+
+
+def get_center_text(message):
+    user_data[message.chat.id]['center_text'] = message.text
+    bot.reply_to(message, "Enter the text for above the center (or leave empty):")
+    bot.register_next_step_handler(message, get_above_text)
+
+
+def get_above_text(message):
+    user_data[message.chat.id]['above_text'] = message.text
+    bot.reply_to(message, "Enter the text for below the center (or leave empty):")
+    bot.register_next_step_handler(message, generate_image)
+
+
+def generate_image(message):
+    user_data[message.chat.id]['below_text'] = message.text
+    send_image_with_keyboard(message)
+
+
+def send_image_with_keyboard(message):
+    chat_id = message.chat.id
+    data = user_data.get(chat_id)
+
+    if not data:
+        bot.reply_to(message, "An error occurred. Please start again.")
+        return
+
+
+    output_image_path = add_text_to_image(**data)
+
+    if output_image_path.startswith("Error"):
+        bot.reply_to(message, output_image_path)
+    else:
+        try:
+            with open(output_image_path, 'rb') as f:
+                markup = create_keyboard(chat_id)
+                bot.send_photo(chat_id, f, reply_markup=markup)
+            os.remove(data['image'])
+            os.remove(output_image_path)
+            del user_data[chat_id]
+        except Exception as e:
+            bot.reply_to(message, f"Error sending image: {str(e)}")
+
+
+def create_keyboard(chat_id):
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.row(
+        telebot.types.InlineKeyboardButton("+ Center", callback_data=f'{chat_id}:center:plus'),
+        telebot.types.InlineKeyboardButton("- Center", callback_data=f'{chat_id}:center:minus')
+    )
+    markup.row(
+        telebot.types.InlineKeyboardButton("+ Above", callback_data=f'{chat_id}:above:plus'),
+        telebot.types.InlineKeyboardButton("- Above", callback_data=f'{chat_id}:above:minus')
+    )
+    markup.row(
+        telebot.types.InlineKeyboardButton("+ Below", callback_data=f'{chat_id}:below:plus'),
+        telebot.types.InlineKeyboardButton("- Below", callback_data=f'{chat_id}:below:minus')
+    )
+    markup.row(telebot.types.InlineKeyboardButton("Generate Image", callback_data=f'{chat_id}:generate'))
+    return markup
 
 
 @bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
+def handle_callback_query(call):
     try:
-        chat_id = call.message.chat.id
-        if chat_id not in user_data:
-            bot.answer_callback_query(call.id, text="Please send an image and enter text first.", show_alert=True)
+        chat_id, text_area, action = call.data.split(':')
+        chat_id = int(chat_id)
+        data = user_data.get(chat_id)
+        if not data:
+            bot.answer_callback_query(call.id, text="Session expired. Please start again.", show_alert=True)
             return
 
-        data = user_data[chat_id]
-        if call.data.endswith("plus") or call.data.endswith("minus"):
-            text_area = call.data[:-5] if call.data.endswith("plus") else call.data[:-6]
-            if text_area == "center":
-                data['center_size'] += 2 if call.data.endswith("plus") else -2
-            elif text_area == "above":
-                data['above_size'] += 2 if call.data.endswith("plus") else -2
-            elif text_area == "below":
-                data['below_size'] += 2 if call.data.endswith("plus") else -2
-            data['center_size'] = max(10, min(150, data['center_size'])) #Keep size within bounds
-            data['above_size'] = max(10, min(150, data['above_size']))
-            data['below_size'] = max(10, min(150, data['below_size']))
-            # Update user_data with the adjusted sizes
-
-
-        elif call.data == "generate":
-            output_image_path = add_text_to_image(data['image'], data['center_text'], data['above_text'],
-                                              data['below_text'], data['center_size'], data['above_size'], data['below_size'])
-            if output_image_path.startswith("Error"):
-                bot.answer_callback_query(call.id, text=output_image_path, show_alert=True)
-            else:
-                with open(output_image_path, 'rb') as f:
-                    bot.send_photo(chat_id, f)
-                os.remove(data['image'])
-                os.remove(output_image_path)
-                del user_data[chat_id]
-                return #Exit after generating the image
+        if action == 'plus':
+            size_key = f'{text_area}_size'
+            data[size_key] = min(max_font_size, data[size_key] + 2)
+        elif action == 'minus':
+            size_key = f'{text_area}_size'
+            data[size_key] = max(min_font_size, data[size_key] - 2)
+        elif action == 'generate':
+            send_image_with_keyboard(call.message)
+            return
 
         markup = create_keyboard(chat_id)
         bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         bot.answer_callback_query(call.id, text=f"Text size adjusted!")
 
     except Exception as e:
-        bot.answer_callback_query(call.id, text=f"An unexpected error occurred: {str(e)}", show_alert=True)
+        bot.answer_callback_query(call.id, text=f"An error occurred: {str(e)}", show_alert=True)
+
 
 
 bot.infinity_polling()
-        
+    
