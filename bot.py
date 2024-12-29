@@ -2,34 +2,45 @@ import telebot
 from PIL import Image, ImageDraw, ImageFont
 import os
 import time
-# Replace 'YOUR_BOT_TOKEN' with your actual bot token
-BOT_TOKEN = 'YOUR_BOT_TOKEN'
-bot = telebot.TeleBot("6590125561:AAHbumkUHB5654HOPGGaIzIOn5OyhgiQLV4")
+import textwrap
 
-def add_text_to_image(image_path, text):
+BOT_TOKEN = '6590125561:AAHbumkUHB5654HOPGGaIzIOn5OyhgiQLV4' # Your token
+bot = telebot.TeleBot(BOT_TOKEN)
+
+def add_text_to_image(image_path, center_text, above_text, below_text):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
-
-        # Get image dimensions
         width, height = img.size
 
-        # Simple text positioning (adjust as needed)
-        text_x = 10
-        text_y = 10
-
-        # Choose a font (you might need to adjust the path)
+        # Choose a font
         try:
-            font = ImageFont.truetype("arial.ttf", 30) # Replace 'arial.ttf' with your font if needed.
+            font_center = ImageFont.truetype("arial.ttf", 40) # Adjust size as needed
+            font_above_below = ImageFont.truetype("arial.ttf", 30) # Smaller for above/below
         except IOError:
-            font = ImageFont.load_default()
+            font_center = ImageFont.load_default()
+            font_above_below = ImageFont.load_default()
             print("Default font used.")
 
-        # Wrap text if it's too long for a single line
-        wrapped_text = textwrap.fill(text, width=int(width/10)) # Adjust width as needed
+        # Center text
+        center_text_size = draw.textsize(center_text, font=font_center)
+        center_x = (width - center_text_size[0]) // 2
+        center_y = (height - center_text_size[1]) // 2
+        draw.text((center_x, center_y), center_text, font=font_center, fill=(255, 0, 0))
 
-        # Draw text (using multiple lines if wrapped)
-        draw.text((text_x, text_y), wrapped_text, font=font, fill=(255, 0, 0)) # Red text
+        # Text above center
+        if above_text:
+            above_text_size = draw.textsize(above_text, font=font_above_below)
+            above_x = (width - above_text_size[0]) // 2
+            above_y = center_y - center_text_size[1] - 10 # Adjust spacing as needed
+            draw.text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255)) # Blue
+
+        # Text below center
+        if below_text:
+            below_text_size = draw.textsize(below_text, font=font_above_below)
+            below_x = (width - below_text_size[0]) // 2
+            below_y = center_y + center_text_size[1] + 10 # Adjust spacing as needed
+            draw.text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0)) # Green
 
         timestamp = int(time.time())
         output_filename = f"output_{timestamp}.jpg"
@@ -38,20 +49,12 @@ def add_text_to_image(image_path, text):
     except Exception as e:
         return f"Error processing image: {e}"
 
-import textwrap # Added for text wrapping
-
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Hello! Send me the text you want to add to an image.")
-    bot.register_next_step_handler(message, get_text)
+    bot.reply_to(message, "Send me the image.")
+    bot.register_next_step_handler(message, get_center_text)
 
-def get_text(message):
-    global user_text
-    user_text = message.text
-    bot.reply_to(message, "Now send me the image.")
-    bot.register_next_step_handler(message, process_image)
-
-def process_image(message):
+def get_center_text(message):
     if message.photo:
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
@@ -59,20 +62,38 @@ def process_image(message):
         with open(image_filename, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        output_image_path = add_text_to_image(image_filename, user_text)
-
-        if output_image_path.startswith("Error"):
-            bot.reply_to(message, output_image_path)
-        else:
-            try:
-                with open(output_image_path, 'rb') as f:
-                    bot.send_photo(message.chat.id, f)
-                os.remove(image_filename) #Clean up temp file
-                os.remove(output_image_path) #Clean up output file
-            except Exception as e:
-                bot.reply_to(message, f"Error sending image: {e}")
+        bot.reply_to(message, "Enter the text for the center:")
+        bot.register_next_step_handler(message, get_above_text, image_filename)
     else:
         bot.reply_to(message, "That's not an image!")
 
-bot.infinity_polling()
 
+def get_above_text(message, image_filename):
+    global center_text
+    center_text = message.text
+    bot.reply_to(message, "Enter the text for above the center (or leave empty):")
+    bot.register_next_step_handler(message, get_below_text, image_filename, center_text)
+
+def get_below_text(message, image_filename, center_text):
+    global above_text
+    above_text = message.text
+    bot.reply_to(message, "Enter the text for below the center (or leave empty):")
+    bot.register_next_step_handler(message, process_final_image, image_filename, center_text, above_text)
+
+def process_final_image(message, image_filename, center_text, above_text):
+    global below_text
+    below_text = message.text
+    output_image_path = add_text_to_image(image_filename, center_text, above_text, below_text)
+
+    if output_image_path.startswith("Error"):
+        bot.reply_to(message, output_image_path)
+    else:
+        try:
+            with open(output_image_path, 'rb') as f:
+                bot.send_photo(message.chat.id, f)
+            os.remove(image_filename)
+            os.remove(output_image_path)
+        except Exception as e:
+            bot.reply_to(message, f"Error sending image: {e}")
+
+bot.infinity_polling()
