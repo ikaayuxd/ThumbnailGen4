@@ -9,8 +9,8 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 
 # Default text sizes and font
-default_font_size_center = 220
-default_font_size_above_below = 150
+default_font_size_center = 100
+default_font_size_above_below = 75
 
 # Dictionary to store user data
 user_data = {}
