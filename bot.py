@@ -4,7 +4,7 @@ import os
 import time
 import textwrap
 
-BOT_TOKEN = '6590125561:AAFEIckYYEM2wg9JIzZy9MCamgwRt_BfQsg' # Your token
+BOT_TOKEN = '6590125561:AAEyNdWy395PfKplBKUidOSHkLglx56NBsI' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Initial text sizes and font
@@ -26,7 +26,7 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
 
         try:
             font_center = ImageFont.truetype("arial.ttf", center_size)
-            font_above_below = ImageFont.truetype("arial.ttf", above_size) #Smaller for above/below
+            font_above_below = ImageFont.truetype("arial.ttf", above_size) # Smaller for above/below
         except IOError:
             font_center = ImageFont.load_default()
             font_above_below = ImageFont.load_default()
@@ -45,7 +45,8 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
             above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
             above_x = (width - above_text_size[0]) // 2
             above_y = center_y - center_text_size[1] - 10
-            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255), align="center")
+            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255),
+                                align="center")
 
         # Below text (with word wrapping)
         if below_text:
@@ -53,7 +54,8 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
             below_text_size = draw.multiline_textsize(below_text, font=font_above_below)
             below_x = (width - below_text_size[0]) // 2
             below_y = center_y + center_text_size[1] + 10
-            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0), align="center")
+            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0),
+                                align="center")
 
         timestamp = int(time.time())
         output_filename = f"output_{timestamp}.jpg"
@@ -148,32 +150,39 @@ def create_keyboard(chat_id):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
-    chat_id = call.message.chat.id
-    data = user_data[chat_id]
-    if call.data.endswith("plus"):
-        text_area = call.data[:-5]
-        if text_area == "center":
-            data['center_size'] += 2
-        elif text_area == "above":
-            data['above_size'] += 2
-        elif text_area == "below":
-            data['below_size'] += 2
-    elif call.data.endswith("minus"):
-        text_area = call.data[:-6]
-        if text_area == "center":
-            data['center_size'] = max(10, data['center_size'] - 2) #prevent size from going too low
-        elif text_area == "above":
-            data['above_size'] = max(10, data['above_size'] - 2)
-        elif text_area == "below":
-            data['below_size'] = max(10, data['below_size'] - 2)
-    elif call.data == "generate":
-      process_final_image(call.message)
-      return #prevent further processing
+    try:
+        chat_id = call.message.chat.id
+        data = user_data[chat_id]
+        if call.data.endswith("plus"):
+            text_area = call.data[:-5]
+            if text_area == "center":
+                data['center_size'] += 2
+            elif text_area == "above":
+                data['above_size'] += 2
+            elif text_area == "below":
+                data['below_size'] += 2
+        elif call.data.endswith("minus"):
+            text_area = call.data[:-6]
+            if text_area == "center":
+                data['center_size'] = max(10, data['center_size'] - 2) # prevent size from going too low
+            elif text_area == "above":
+                data['above_size'] = max(10, data['above_size'] - 2)
+            elif text_area == "below":
+                data['below_size'] = max(10, data['below_size'] - 2)
+        elif call.data == "generate":
+            process_final_image(call.message)
+            return # prevent further processing
 
-    markup = create_keyboard(chat_id)
-    bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
-    bot.answer_callback_query(call.id, text=f"Text size adjusted!")
+        markup = create_keyboard(chat_id)
+        bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        bot.answer_callback_query(call.id, text=f"Text size adjusted!")
+
+    except KeyError:
+        bot.answer_callback_query(call.id, text="Please start by sending an image and setting the text.",
+                                  show_alert=True)
+    except Exception as e:
+        bot.answer_callback_query(call.id, text=f"An error occurred: {e}", show_alert=True)
 
 
 bot.infinity_polling()
-            
+    
