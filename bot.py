@@ -4,7 +4,7 @@ import os
 import time
 import textwrap
 
-BOT_TOKEN = '6590125561:AAHbumkUHB5654HOPGGaIzIOn5OyhgiQLV4' # Your token
+BOT_TOKEN = '6590125561:AAFEIckYYEM2wg9JIzZy9MCamgwRt_BfQsg' # Your token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 def add_text_to_image(image_path, center_text, above_text, below_text):
