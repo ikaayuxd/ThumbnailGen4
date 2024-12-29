@@ -4,7 +4,7 @@ import os
 import time
 import textwrap
 
-BOT_TOKEN = 'YOUR_BOT_TOKEN' # Replace with your bot token
+BOT_TOKEN = '6590125561:AAEyNdWy395PfKplBKUidOSHkLglx56NBsI' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Significantly increased default font sizes
