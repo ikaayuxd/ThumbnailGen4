@@ -13,34 +13,38 @@ def add_text_to_image(image_path, center_text, above_text, below_text):
         draw = ImageDraw.Draw(img)
         width, height = img.size
 
-        # Choose a font
+        # Choose a font (handling potential errors)
         try:
-            font_center = ImageFont.truetype("arial.ttf", 40) # Adjust size as needed
-            font_above_below = ImageFont.truetype("arial.ttf", 30) # Smaller for above/below
+            font_center = ImageFont.truetype("arial.ttf", 40)  
+            font_above_below = ImageFont.truetype("arial.ttf", 30) 
         except IOError:
             font_center = ImageFont.load_default()
             font_above_below = ImageFont.load_default()
             print("Default font used.")
 
-        # Center text
-        center_text_size = draw.textsize(center_text, font=font_center)
+        # Center text (with word wrapping for long text)
+        center_text = "\n".join(textwrap.wrap(center_text, width=30)) # Adjust width as needed
+        center_text_size = draw.multiline_textsize(center_text, font=font_center)
         center_x = (width - center_text_size[0]) // 2
         center_y = (height - center_text_size[1]) // 2
-        draw.text((center_x, center_y), center_text, font=font_center, fill=(255, 0, 0))
+        draw.multiline_text((center_x, center_y), center_text, font=font_center, fill=(255, 0, 0), align="center")
 
-        # Text above center
+
+        # Text above center (with word wrapping)
         if above_text:
-            above_text_size = draw.textsize(above_text, font=font_above_below)
+            above_text = "\n".join(textwrap.wrap(above_text, width=30))
+            above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
             above_x = (width - above_text_size[0]) // 2
-            above_y = center_y - center_text_size[1] - 10 # Adjust spacing as needed
-            draw.text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255)) # Blue
+            above_y = center_y - center_text_size[1] - 10 
+            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255), align="center")
 
-        # Text below center
+        # Text below center (with word wrapping)
         if below_text:
-            below_text_size = draw.textsize(below_text, font=font_above_below)
+            below_text = "\n".join(textwrap.wrap(below_text, width=30))
+            below_text_size = draw.multiline_textsize(below_text, font=font_above_below)
             below_x = (width - below_text_size[0]) // 2
-            below_y = center_y + center_text_size[1] + 10 # Adjust spacing as needed
-            draw.text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0)) # Green
+            below_y = center_y + center_text_size[1] + 10 
+            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0), align="center")
 
         timestamp = int(time.time())
         output_filename = f"output_{timestamp}.jpg"
@@ -90,10 +94,27 @@ def process_final_image(message, image_filename, center_text, above_text):
     else:
         try:
             with open(output_image_path, 'rb') as f:
-                bot.send_photo(message.chat.id, f)
+                # Send photo with inline keyboard
+                markup = telebot.types.InlineKeyboardMarkup()
+                markup.add(telebot.types.InlineKeyboardButton("Button 1", callback_data="button1"),
+                           telebot.types.InlineKeyboardButton("Button 2", callback_data="button2"),
+                           telebot.types.InlineKeyboardButton("Button 3", callback_data="button3"))
+                markup.add(telebot.types.InlineKeyboardButton("Button 4", callback_data="button4"),
+                           telebot.types.InlineKeyboardButton("Button 5", callback_data="button5"),
+                           telebot.types.InlineKeyboardButton("Button 6", callback_data="button6"))
+
+                bot.send_photo(message.chat.id, f, reply_markup=markup)
+
             os.remove(image_filename)
             os.remove(output_image_path)
         except Exception as e:
             bot.reply_to(message, f"Error sending image: {e}")
 
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    # Process button clicks here. Add your button logic.
+    bot.answer_callback_query(call.id, f"You pressed {call.data}")
+
+
 bot.infinity_polling()
+                
