@@ -12,12 +12,12 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 BOT_TOKEN = '6590125561:AAFcvxs_j1d2w7gy76u1RJC9JY8TwcEK12k' # Replace with your actual bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Default settings (made more robust)
-default_font_size_center = 120
-default_font_size_above_below = 90
-default_font_path = "arial.ttf" # Or path to your preferred font. Consider checking if it exists.
-default_center_color = (225, 255, 255) # White
-default_other_color = (0, 255, 255) # Cyan
+# Default settings
+default_font_size_center = 100
+default_font_size_above_below = 75
+default_font_path = "arial.ttf" # Or path to your preferred font
+default_center_color = (0, 255, 255) # Cyan
+default_other_color = (255, 255, 255) # White
 default_stroke_width = 5
 
 # Default positions (fractions of image width and height)
@@ -64,21 +64,18 @@ def add_text_to_image(image_path, center_text, above_text, below_text,
 
         max_width = width * 0.8
 
-        # Improved text wrapping to handle potential errors better
         center_text = "\n".join(textwrap.wrap(center_text or "", width=int(max_width / (font_center.getsize(" ")[0] or 1))))
         above_text = "\n".join(textwrap.wrap(above_text or "", width=int(max_width / (font_above_below.getsize(" ")[0] or 1))))
         below_text = "\n".join(textwrap.wrap(below_text or "", width=int(max_width / (font_above_below.getsize(" ")[0] or 1))))
 
-
         def add_text_with_stroke(text, font, color, x, y, stroke_width):
-            if text: # Only add if text exists
+            if text:
                 draw.text((x - stroke_width, y - stroke_width), text, font=font, fill="black")
                 draw.text((x + stroke_width, y - stroke_width), text, font=font, fill="black")
                 draw.text((x - stroke_width, y + stroke_width), text, font=font, fill="black")
                 draw.text((x + stroke_width, y + stroke_width), text, font=font, fill="black")
                 draw.text((x, y), text, font=font, fill=color)
 
-        # Error handling for empty text
         if not center_text and not above_text and not below_text:
             return "Error: No text provided."
 
@@ -170,7 +167,13 @@ def get_below_text(message):
 def generate_image(message):
     user_data = user_states[message.chat.id]
     user_data['below_text'] = message.text
-    output_path = add_text_to_image(**user_data) # unpacks the dictionary
+
+    output_path = add_text_to_image(user_data['image'], user_data['center_text'], user_data['above_text'],
+                                    user_data['below_text'], user_data['center_size'], user_data['above_size'],
+                                    user_data['below_size'], user_data['font_path'], user_data['center_color'],
+                                    user_data['other_color'], default_stroke_width,
+                                    user_data['center_h_pos'], user_data['center_v_pos'], user_data['above_h_pos'],
+                                    user_data['above_v_pos'], user_data['below_h_pos'], user_data['below_v_pos'])
 
     if output_path.startswith("Error"):
         bot.reply_to(message, output_path)
@@ -182,7 +185,6 @@ def generate_image(message):
                 user_data['stage'] = 'position_adjustment'
                 add_buttons(sent_message)
 
-            # Clean up temporary files only if successful.
             os.remove(user_data['image'])
 
         except Exception as e:
@@ -214,13 +216,12 @@ def handle_callback_query(call):
         return
 
     try:
-        parts = data.split('_') # Split into multiple parts
+        parts = data.split('_')
         if len(parts) != 2:
             bot.answer_callback_query(call.id, "Error: Invalid callback data.", show_alert=True)
             return
         pos, direction = parts
 
-        # Check if pos is a valid position
         valid_positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
         if pos not in valid_positions:
             bot.answer_callback_query(call.id, "Error: Invalid position in callback data.", show_alert=True)
@@ -234,22 +235,25 @@ def handle_callback_query(call):
             bot.answer_callback_query(call.id, "Error: Invalid direction in callback data.", show_alert=True)
             return
 
-        output_path = add_text_to_image(**state)
+        output_path = add_text_to_image(state['image'], state['center_text'], state['above_text'], state['below_text'],
+                                        state['center_size'], state['above_size'], state['below_size'], state['font_path'],
+                                        state['center_color'], state['other_color'], default_stroke_width,
+                                        state['center_h_pos'], state['center_v_pos'], state['above_h_pos'],
+                                        state['above_v_pos'], state['below_h_pos'], state['below_v_pos'])
 
         if not output_path.startswith("Error"):
             with open(output_path, 'rb') as f:
                 bot.edit_message_media(media=types.InputMediaPhoto(f), chat_id=chat_id, message_id=state['message_id'],
                                        caption="Adjust positions using buttons below.")
                 add_buttons(call.message)
-            os.remove(output_path) # Remove the temporary file after successful edit.
+            os.remove(output_path)
         else:
             bot.answer_callback_query(call.id, f"Error generating image: {output_path}", show_alert=True)
 
-
     except Exception as e:
-        logging.exception(f"Error in callback query handler: {e}") # Log the full traceback for debugging
+        logging.exception(f"Error in callback query handler: {e}")
         bot.answer_callback_query(call.id, f"An unexpected error occurred: {str(e)}", show_alert=True)
 
 
 bot.infinity_polling()
-        
+            
