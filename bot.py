@@ -9,11 +9,11 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 
 # Default settings
-default_font_size_center = 100
-default_font_size_above_below = 75
+default_font_size_center = 120
+default_font_size_above_below = 90
 default_font_path = "arial.ttf" # Or path to your preferred font
-default_center_color = (0, 255, 255) # Cyan
-default_other_color = (255, 255, 255) # White
+default_center_color = (255, 255, 255) # White
+default_other_color = (0, 255, 255) # Cyan
 
 # User data structure
 user_data = {}
