@@ -83,7 +83,6 @@ def process_image(message):
             new_file.write(downloaded_file)
 
         user_data[message.chat.id] = {
-            'image': image_filename,
             'center_text': '',
             'above_text': '',
             'below_text': '',
@@ -118,14 +117,15 @@ def generate_image(message):
     chat_id = message.chat.id
     data = user_data.get(chat_id)
     if data:
-        output_path = add_text_to_image(**data)
+        image_path = user_data[chat_id]['image'] # Access image path separately
+        output_path = add_text_to_image(image_path, **data) # Pass image_path explicitly
         if output_path.startswith("Error"):
             bot.reply_to(message, output_path)
         else:
             try:
                 with open(output_path, 'rb') as f:
                     bot.send_photo(chat_id, f)
-                os.remove(data['image'])
+                os.remove(data['image']) # Clean up temp image files
                 os.remove(output_path)
                 del user_data[chat_id]
             except Exception as e:
@@ -135,4 +135,4 @@ def generate_image(message):
 
 
 bot.infinity_polling()
-
+            
