@@ -4,15 +4,17 @@ import os
 import time
 import textwrap
 
-BOT_TOKEN = '6590125561:AAFcDw2FhMA8FMBDeERyjgYsNWnQqDsuo9U'
+BOT_TOKEN = '6590125561:AAFcDw2FhMA8FMBDeERyjgYsNWnQqDsuo9U' # Replace with your actual bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
-
-# Default text sizes and font
+# Default settings
 default_font_size_center = 100
 default_font_size_above_below = 75
+default_font_path = "arial.ttf" # Or path to your preferred font
+default_center_color = (0, 255, 255) # Cyan
+default_other_color = (255, 255, 255) # White
 
-# Dictionary to store user data
+# User data structure
 user_data = {}
 
 # Function to handle font loading errors
@@ -24,7 +26,7 @@ def load_font(font_path, size):
         return ImageFont.load_default()
 
 
-def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size, font_path="arial.ttf"):
+def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size, font_path, center_color, other_color):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
@@ -33,36 +35,37 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
         font_center = load_font(font_path, center_size)
         font_above_below = load_font(font_path, above_size)
 
-        max_width = width * 0.8
+        # Dynamic text wrapping based on available width
+        max_width = width * 0.8 # Use 80% of image width for text
 
         center_text = "\n".join(textwrap.wrap(center_text, width=int(max_width / font_center.getsize(" ")[0])))
         above_text = "\n".join(textwrap.wrap(above_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if above_text else ""
         below_text = "\n".join(textwrap.wrap(below_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if below_text else ""
 
+        # Calculate text positions and add text to image
         center_text_size = draw.multiline_textsize(center_text, font=font_center)
         center_x = (width - center_text_size[0]) // 2
         center_y = (height - center_text_size[1]) // 2
-
-        draw.multiline_text((center_x, center_y), center_text, font=font_center, fill=(255, 0, 0), align="center")
+        draw.multiline_text((center_x, center_y), center_text, font=font_center, fill=center_color, align="center")
 
         if above_text:
             above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
             above_x = (width - above_text_size[0]) // 2
-            above_y = center_y - center_text_size[1] - 10
-            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=(0, 0, 255), align="center")
+            above_y = center_y - center_text_size[1] - 10 # Adjust vertical spacing as needed
+            draw.multiline_text((above_x, above_y), above_text, font=font_above_below, fill=other_color, align="center")
 
         if below_text:
             below_text_size = draw.multiline_textsize(below_text, font=font_above_below)
             below_x = (width - below_text_size[0]) // 2
-            below_y = center_y + center_text_size[1] + 10
-            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=(0, 255, 0), align="center")
+            below_y = center_y + center_text_size[1] + 10 # Adjust vertical spacing as needed
+            draw.multiline_text((below_x, below_y), below_text, font=font_above_below, fill=other_color, align="center")
 
         timestamp = int(time.time())
         output_filename = f"output_{timestamp}.jpg"
         img.save(output_filename)
         return output_filename
     except Exception as e:
-        return f"Error processing image: {e}"
+        return f"Error processing image: {str(e)}"
 
 
 @bot.message_handler(commands=['start'])
@@ -87,7 +90,9 @@ def process_image(message):
             'center_size': default_font_size_center,
             'above_size': default_font_size_above_below,
             'below_size': default_font_size_above_below,
-            'font_path': "arial.ttf",
+            'font_path': default_font_path,
+            'center_color': default_center_color,
+            'other_color': default_other_color,
         }
 
         bot.reply_to(message, "Enter the text for the center:")
@@ -111,17 +116,22 @@ def get_below_text(message):
 def generate_image(message):
     user_data[message.chat.id]['below_text'] = message.text
     chat_id = message.chat.id
-    data = user_data[chat_id]
-    output_path = add_text_to_image(image_path=data['image'], **{k: v for k, v in data.items() if k != 'image'})
-
-    try:
-        with open(output_path, 'rb') as f:
-            bot.send_photo(chat_id, f)
-        os.remove(output_path)
-        os.remove(data['image'])
-        del user_data[chat_id]
-    except Exception as e:
-        bot.reply_to(message, f"An error occurred: {e}")
+    data = user_data.get(chat_id)
+    if data:
+        output_path = add_text_to_image(**data)
+        if output_path.startswith("Error"):
+            bot.reply_to(message, output_path)
+        else:
+            try:
+                with open(output_path, 'rb') as f:
+                    bot.send_photo(chat_id, f)
+                os.remove(data['image'])
+                os.remove(output_path)
+                del user_data[chat_id]
+            except Exception as e:
+                bot.reply_to(message, f"Error sending image: {str(e)}")
+    else:
+        bot.reply_to(message, "An error occurred. Please start again.")
 
 
 bot.infinity_polling()
