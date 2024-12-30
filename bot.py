@@ -54,7 +54,6 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
         above_text = "\n".join(textwrap.wrap(above_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if above_text else ""
         below_text = "\n".join(textwrap.wrap(below_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if below_text else ""
 
-
         def add_text_with_stroke(text, font, color, x, y, stroke_width):
             draw.text((x - stroke_width, y - stroke_width), text, font=font, fill="black") # Stroke
             draw.text((x + stroke_width, y - stroke_width), text, font=font, fill="black") # Stroke
@@ -62,14 +61,11 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
             draw.text((x + stroke_width, y + stroke_width), text, font=font, fill="black") # Stroke
             draw.text((x, y), text, font=font, fill=color) # Text
 
-
-
         # Calculate text positions
         center_text_size = draw.multiline_textsize(center_text, font=font_center)
         center_x = int(width * center_h_pos - center_text_size[0] / 2)
         center_y = int(height * center_v_pos - center_text_size[1] / 2)
         add_text_with_stroke(center_text, font_center, center_color, center_x, center_y, stroke_width)
-
 
         if above_text:
             above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
@@ -87,12 +83,64 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
         output_filename = f"output_{timestamp}.jpg"
         img.save(output_filename)
         return output_filename
+    except FileNotFoundError:
+        return "Error: Image file not found."
+    except IOError as e:
+        return f"Error processing image: {e}"
     except Exception as e:
-        return f"Error processing image: {str(e)}"
+        return f"An unexpected error occurred: {e}"
 
 
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "Send me an image.")
+    bot.register_next_step_handler(message, process_image)
 
-# ... (rest of the code remains largely the same, but generate_image needs updating)
+
+def process_image(message):
+    if message.photo:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        image_filename = "temp_image.jpg"
+        with open(image_filename, 'wb') as new_file:
+            new_file.write(downloaded_file)
+
+        user_data[message.chat.id] = {
+            'image': image_filename,
+            'center_text': '',
+            'above_text': '',
+            'below_text': '',
+            'center_size': default_font_size_center,
+            'above_size': default_font_size_above_below,
+            'below_size': default_font_size_above_below,
+            'font_path': default_font_path,
+            'center_color': default_center_color,
+            'other_color': default_other_color,
+            'center_h_pos': default_center_h_pos,
+            'center_v_pos': default_center_v_pos,
+            'above_h_pos': default_above_h_pos,
+            'above_v_pos': default_above_v_pos,
+            'below_h_pos': default_below_h_pos,
+            'below_v_pos': default_below_v_pos,
+        }
+
+        bot.reply_to(message, "Enter the text for the center:")
+        bot.register_next_step_handler(message, get_above_text)
+    else:
+        bot.reply_to(message, "That's not an image!")
+
+
+def get_above_text(message):
+    user_data[message.chat.id]['center_text'] = message.text
+    bot.reply_to(message, "Enter the text for above the center (or leave empty):")
+    bot.register_next_step_handler(message, get_below_text)
+
+
+def get_below_text(message):
+    user_data[message.chat.id]['above_text'] = message.text
+    bot.reply_to(message, "Enter the text for below the center (or leave empty):")
+    bot.register_next_step_handler(message, generate_image)
+
 
 def generate_image(message):
     user_data[message.chat.id]['below_text'] = message.text
@@ -100,9 +148,8 @@ def generate_image(message):
     data = user_data.get(chat_id)
     if data:
         image_path = data['image']
-        # Pass all the position parameters explicitly:
         output_path = add_text_to_image(image_path, data['center_text'], data['above_text'], data['below_text'], data['center_size'], data['above_size'], data['below_size'], data['font_path'], data['center_color'], data['other_color'], default_stroke_width,
-                                        default_center_h_pos, default_center_v_pos, default_above_h_pos, default_above_v_pos, default_below_h_pos, default_below_v_pos)
+                                        data['center_h_pos'], data['center_v_pos'], data['above_h_pos'], data['above_v_pos'], data['below_h_pos'], data['below_v_pos'])
 
         if output_path.startswith("Error"):
             bot.reply_to(message, output_path)
@@ -120,4 +167,4 @@ def generate_image(message):
 
 
 bot.infinity_polling()
-
+                          
