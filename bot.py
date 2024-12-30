@@ -4,7 +4,7 @@ import os
 import time
 import textwrap
 
-BOT_TOKEN = '6590125561:AAF2GxR4YzzyXLIFjRZCXB-7N0ifOrwk2ds' # Replace with your actual bot token
+BOT_TOKEN = '6590125561:AAGAoF0_TzhAtXdhxM2Mys_OyKoXPTZpPDc' # Replace with your actual bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 
