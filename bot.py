@@ -83,8 +83,8 @@ def process_image(message):
         with open(image_filename, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        user_data[message.chat.id] = { # Corrected line: Add 'image' key here
-            'image': image_filename, # Add image path to user data
+        user_data[message.chat.id] = {
+            'image': image_filename,
             'center_text': '',
             'above_text': '',
             'below_text': '',
@@ -119,8 +119,10 @@ def generate_image(message):
     chat_id = message.chat.id
     data = user_data.get(chat_id)
     if data:
-        image_path = data['image'] # Access image path correctly
-        output_path = add_text_to_image(image_path, **data)
+        image_path = data['image']
+        # Correct call to add_text_to_image:
+        output_path = add_text_to_image(image_path, data['center_text'], data['above_text'], data['below_text'], data['center_size'], data['above_size'], data['below_size'], data['font_path'], data['center_color'], data['other_color'])
+
         if output_path.startswith("Error"):
             bot.reply_to(message, output_path)
         else:
@@ -137,4 +139,3 @@ def generate_image(message):
 
 
 bot.infinity_polling()
-
