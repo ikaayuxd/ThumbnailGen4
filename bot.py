@@ -1,10 +1,11 @@
 import telebot
+from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 import os
 import time
 import textwrap
 
-BOT_TOKEN = '' # Replace with your actual bot token
+BOT_TOKEN = '6590125561:AAFcvxs_j1d2w7gy76u1RJC9JY8TwcEK12k' # Replace with your actual bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 
@@ -23,12 +24,12 @@ default_above_h_pos = 0.5 # Horizontal position (0-1)
 default_above_v_pos = 0.3 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
+position_step = 0.05
 
 
-# User data structure
-user_data = {}
+user_states = {} # Dictionary to store user states
 
-# Function to handle font loading errors
+
 def load_font(font_path, size):
     try:
         return ImageFont.truetype(font_path, size)
@@ -37,8 +38,9 @@ def load_font(font_path, size):
         return ImageFont.load_default()
 
 
-def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size, font_path, center_color, other_color, stroke_width,
-                      center_h_pos, center_v_pos, above_h_pos, above_v_pos, below_h_pos, below_v_pos):
+def add_text_to_image(image_path, center_text, above_text, below_text, center_size, above_size, below_size, font_path,
+                      center_color, other_color, stroke_width, center_h_pos, center_v_pos, above_h_pos, above_v_pos,
+                      below_h_pos, below_v_pos):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
@@ -47,21 +49,19 @@ def add_text_to_image(image_path, center_text, above_text, below_text, center_si
         font_center = load_font(font_path, center_size)
         font_above_below = load_font(font_path, above_size)
 
-        # Dynamic text wrapping based on available width
-        max_width = width * 0.8 # Use 80% of image width for text
+        max_width = width * 0.8
 
         center_text = "\n".join(textwrap.wrap(center_text, width=int(max_width / font_center.getsize(" ")[0])))
         above_text = "\n".join(textwrap.wrap(above_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if above_text else ""
         below_text = "\n".join(textwrap.wrap(below_text, width=int(max_width / font_above_below.getsize(" ")[0]))) if below_text else ""
 
         def add_text_with_stroke(text, font, color, x, y, stroke_width):
-            draw.text((x - stroke_width, y - stroke_width), text, font=font, fill="black") # Stroke
-            draw.text((x + stroke_width, y - stroke_width), text, font=font, fill="black") # Stroke
-            draw.text((x - stroke_width, y + stroke_width), text, font=font, fill="black") # Stroke
-            draw.text((x + stroke_width, y + stroke_width), text, font=font, fill="black") # Stroke
-            draw.text((x, y), text, font=font, fill=color) # Text
+            draw.text((x - stroke_width, y - stroke_width), text, font=font, fill="black")
+            draw.text((x + stroke_width, y - stroke_width), text, font=font, fill="black")
+            draw.text((x - stroke_width, y + stroke_width), text, font=font, fill="black")
+            draw.text((x + stroke_width, y + stroke_width), text, font=font, fill="black")
+            draw.text((x, y), text, font=font, fill=color)
 
-        # Calculate text positions
         center_text_size = draw.multiline_textsize(center_text, font=font_center)
         center_x = int(width * center_h_pos - center_text_size[0] / 2)
         center_y = int(height * center_v_pos - center_text_size[1] / 2)
@@ -105,7 +105,7 @@ def process_image(message):
         with open(image_filename, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        user_data[message.chat.id] = {
+        user_states[message.chat.id] = {
             'image': image_filename,
             'center_text': '',
             'above_text': '',
@@ -122,8 +122,9 @@ def process_image(message):
             'above_v_pos': default_above_v_pos,
             'below_h_pos': default_below_h_pos,
             'below_v_pos': default_below_v_pos,
+            'stage': 'text_input',
+            'message_id': None
         }
-
         bot.reply_to(message, "Enter the text for the center:")
         bot.register_next_step_handler(message, get_above_text)
     else:
@@ -131,40 +132,88 @@ def process_image(message):
 
 
 def get_above_text(message):
-    user_data[message.chat.id]['center_text'] = message.text
+    user_states[message.chat.id]['center_text'] = message.text
     bot.reply_to(message, "Enter the text for above the center (or leave empty):")
     bot.register_next_step_handler(message, get_below_text)
 
 
 def get_below_text(message):
-    user_data[message.chat.id]['above_text'] = message.text
+    user_states[message.chat.id]['above_text'] = message.text
     bot.reply_to(message, "Enter the text for below the center (or leave empty):")
     bot.register_next_step_handler(message, generate_image)
 
 
 def generate_image(message):
-    user_data[message.chat.id]['below_text'] = message.text
-    chat_id = message.chat.id
-    data = user_data.get(chat_id)
-    if data:
-        image_path = data['image']
-        output_path = add_text_to_image(image_path, data['center_text'], data['above_text'], data['below_text'], data['center_size'], data['above_size'], data['below_size'], data['font_path'], data['center_color'], data['other_color'], default_stroke_width,
-                                        data['center_h_pos'], data['center_v_pos'], data['above_h_pos'], data['above_v_pos'], data['below_h_pos'], data['below_v_pos'])
+    user_data = user_states[message.chat.id]
+    user_data['below_text'] = message.text
+    output_path = add_text_to_image(user_data['image'], user_data['center_text'], user_data['above_text'],
+                                    user_data['below_text'], user_data['center_size'], user_data['above_size'],
+                                    user_data['below_size'], user_data['font_path'], user_data['center_color'],
+                                    user_data['other_color'], default_stroke_width,
+                                    user_data['center_h_pos'], user_data['center_v_pos'], user_data['above_h_pos'],
+                                    user_data['above_v_pos'], user_data['below_h_pos'], user_data['below_v_pos'])
 
-        if output_path.startswith("Error"):
-            bot.reply_to(message, output_path)
-        else:
-            try:
-                with open(output_path, 'rb') as f:
-                    bot.send_photo(chat_id, f)
-                os.remove(data['image'])
-                os.remove(output_path)
-                del user_data[chat_id]
-            except Exception as e:
-                bot.reply_to(message, f"Error sending image: {str(e)}")
+    if output_path.startswith("Error"):
+        bot.reply_to(message, output_path)
     else:
-        bot.reply_to(message, "An error occurred. Please start again.")
+        try:
+            with open(output_path, 'rb') as f:
+                sent_message = bot.send_photo(message.chat.id, f, caption="Adjust positions using buttons below.")
+                user_states[message.chat.id]['message_id'] = sent_message.message_id
+                user_states[message.chat.id]['stage'] = 'position_adjustment'
+                add_buttons(sent_message)
+
+            os.remove(user_data['image'])
+            os.remove(output_path)
+
+        except Exception as e:
+            bot.reply_to(message, f"Error sending image: {str(e)}")
+
+
+def add_buttons(message):
+    markup = types.InlineKeyboardMarkup()
+    button_list = []
+    positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
+    directions = ['left', 'right']
+    for pos in positions:
+        for dir in directions:
+            button_list.append(types.InlineKeyboardButton(f"{pos.replace('_', ' ').title()} {dir.title()}",
+                                                          callback_data=f"{pos}_{dir}"))
+
+    for i in range(0, len(button_list), 2):
+        markup.add(button_list[i], button_list[i + 1] if i + 1 < len(button_list) else None)
+
+
+    bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback_query(call):
+    chat_id = call.message.chat.id
+    data = call.data
+    state = user_states.get(chat_id)
+    if state is None:
+        return
+
+    pos, direction = data.split('_')
+    if direction == 'left':
+        state[pos] = max(0, state[pos] - position_step)
+    elif direction == 'right':
+        state[pos] = min(1, state[pos] + position_step)
+
+
+    output_path = add_text_to_image(state['image'], state['center_text'], state['above_text'], state['below_text'],
+                                    state['center_size'], state['above_size'], state['below_size'], state['font_path'],
+                                    state['center_color'], state['other_color'], default_stroke_width,
+                                    state['center_h_pos'], state['center_v_pos'], state['above_h_pos'],
+                                    state['above_v_pos'], state['below_h_pos'], state['below_v_pos'])
+    if not output_path.startswith("Error"):
+        with open(output_path, 'rb') as f:
+            bot.edit_message_media(media=types.InputMediaPhoto(f), chat_id=chat_id, message_id=state['message_id'],
+                                   caption="Adjust positions using buttons below.")
+            add_buttons(call.message)
+            os.remove(output_path)
 
 
 bot.infinity_polling()
-                          
+            
