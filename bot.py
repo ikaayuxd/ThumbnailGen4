@@ -7,6 +7,7 @@ import textwrap
 BOT_TOKEN = '6590125561:AAFl8DodgcPO_3Z5oyUkU-B6zlYc1Aumgrk' # Replace with your actual bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
+
 # Default settings
 default_font_size_center = 100
 default_font_size_above_below = 75
@@ -82,7 +83,8 @@ def process_image(message):
         with open(image_filename, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        user_data[message.chat.id] = {
+        user_data[message.chat.id] = { # Corrected line: Add 'image' key here
+            'image': image_filename, # Add image path to user data
             'center_text': '',
             'above_text': '',
             'below_text': '',
@@ -117,15 +119,15 @@ def generate_image(message):
     chat_id = message.chat.id
     data = user_data.get(chat_id)
     if data:
-        image_path = user_data[chat_id]['image'] # Access image path separately
-        output_path = add_text_to_image(image_path, **data) # Pass image_path explicitly
+        image_path = data['image'] # Access image path correctly
+        output_path = add_text_to_image(image_path, **data)
         if output_path.startswith("Error"):
             bot.reply_to(message, output_path)
         else:
             try:
                 with open(output_path, 'rb') as f:
                     bot.send_photo(chat_id, f)
-                os.remove(data['image']) # Clean up temp image files
+                os.remove(data['image'])
                 os.remove(output_path)
                 del user_data[chat_id]
             except Exception as e:
@@ -135,4 +137,4 @@ def generate_image(message):
 
 
 bot.infinity_polling()
-            
+
