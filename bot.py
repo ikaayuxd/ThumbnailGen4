@@ -6,7 +6,7 @@ import time
 import textwrap
 import logging
 
-# Configure logging to capture errors
+# Configure logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 BOT_TOKEN = '6590125561:AAFcvxs_j1d2w7gy76u1RJC9JY8TwcEK12k' # Replace with your actual bot token
@@ -15,7 +15,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 # Default settings
 default_font_size_center = 100
 default_font_size_above_below = 75
-default_font_path = "arial.ttf" # Or path to your preferred font
+default_font_path = "arial.ttf" # Or path to your preferred font. Make sure it exists!
 default_center_color = (0, 255, 255) # Cyan
 default_other_color = (255, 255, 255) # White
 default_stroke_width = 5
@@ -198,8 +198,9 @@ def add_buttons(message):
     directions = ['left', 'right']
     for pos in positions:
         for dir in directions:
+            callback_data = f"{pos}_{dir}"
             button_list.append(types.InlineKeyboardButton(f"{pos.replace('_', ' ').title()} {dir.title()}",
-                                                          callback_data=f"{pos}_{dir}"))
+                                                          callback_data=callback_data))
 
     for i in range(0, len(button_list), 2):
         markup.add(button_list[i], button_list[i + 1] if i + 1 < len(button_list) else None)
@@ -218,22 +219,21 @@ def handle_callback_query(call):
     try:
         parts = data.split('_')
         if len(parts) != 2:
-            bot.answer_callback_query(call.id, "Error: Invalid callback data.", show_alert=True)
+            bot.answer_callback_query(call.id, f"Error: Invalid callback data: {data}", show_alert=True)
+            logging.error(f"Invalid callback data received: {data}")
             return
+
         pos, direction = parts
 
-        valid_positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
-        if pos not in valid_positions:
-            bot.answer_callback_query(call.id, "Error: Invalid position in callback data.", show_alert=True)
+        if pos not in ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v'] or direction not in ['left', 'right']:
+            bot.answer_callback_query(call.id, f"Error: Invalid callback data: {data}", show_alert=True)
+            logging.error(f"Invalid position or direction in callback data: {data}")
             return
 
         if direction == 'left':
             state[pos] = max(0, state[pos] - position_step)
         elif direction == 'right':
             state[pos] = min(1, state[pos] + position_step)
-        else:
-            bot.answer_callback_query(call.id, "Error: Invalid direction in callback data.", show_alert=True)
-            return
 
         output_path = add_text_to_image(state['image'], state['center_text'], state['above_text'], state['below_text'],
                                         state['center_size'], state['above_size'], state['below_size'], state['font_path'],
@@ -256,4 +256,4 @@ def handle_callback_query(call):
 
 
 bot.infinity_polling()
-            
+                          
