@@ -9,7 +9,7 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(filename)s - %(lineno)d - %(message)s')
 
-BOT_TOKEN = '6590125561:AAGo9QIyFc1hvJTR6nteDkvRNWHZ5JZQsAU' # Replace with your bot token
+BOT_TOKEN = '6590125561:AAEdO5QMHKaJdK4poF0HlRGsGJP65JePAYY' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
