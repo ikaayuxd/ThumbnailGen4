@@ -7,9 +7,9 @@ import textwrap
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(filename)s - %(lineno)d - %(message)s')
 
-BOT_TOKEN = '6590125561:AAGo9QIyFc1hvJTR6nteDkvRNWHZ5JZQsAU' # Replace with your actual bot token
+BOT_TOKEN = '6590125561:AAGo9QIyFc1hvJTR6nteDkvRNWHZ5JZQsAU' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
@@ -36,7 +36,7 @@ def load_font(font_path, size):
     try:
         return ImageFont.truetype(font_path, size)
     except IOError:
-        print(f"Could not load font {font_path}. Using default font.")
+        logging.error(f"Could not load font {font_path}. Using default font.")
         return ImageFont.load_default()
 
 
@@ -184,11 +184,12 @@ def generate_image(message):
                 user_data['message_id'] = sent_message.message_id
                 user_data['stage'] = 'position_adjustment'
                 add_buttons(sent_message)
-
+            os.remove(output_path)
             os.remove(user_data['image'])
-
         except Exception as e:
             bot.reply_to(message, f"Error sending image: {str(e)}")
+            logging.exception(f"Error sending image: {e}")
+
 
 
 def add_buttons(message):
@@ -198,8 +199,8 @@ def add_buttons(message):
     directions = ['left', 'right']
     for pos in positions:
         for dir in directions:
-            callback_data = f"{pos}_{dir}"
-            button_list.append(types.InlineKeyboardButton(f"{pos.replace('_', ' ').title()} {dir.title()}",
+            callback_data = f"{pos}_{dir}" # Ensure consistent formatting
+            button_list.append(types.InlineKeyboardButton(text=f"{pos.replace('_', ' ').title()} {dir.title()}",
                                                           callback_data=callback_data))
 
     for i in range(0, len(button_list), 2):
@@ -212,6 +213,7 @@ def handle_callback_query(call):
     chat_id = call.message.chat.id
     data = call.data
     state = user_states.get(chat_id)
+
     if state is None:
         bot.answer_callback_query(call.id, "Error: Session expired.", show_alert=True)
         return
@@ -219,15 +221,19 @@ def handle_callback_query(call):
     try:
         parts = data.split('_')
         if len(parts) != 2:
-            bot.answer_callback_query(call.id, f"Error: Invalid callback data: {data}", show_alert=True)
-            logging.error(f"Invalid callback data received: {data}")
+            bot.answer_callback_query(call.id, f"Error: Invalid callback data format: '{data}'", show_alert=True)
+            logging.error(f"Invalid callback data format: {data}")
             return
 
         pos, direction = parts
 
-        if pos not in ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v'] or direction not in ['left', 'right']:
-            bot.answer_callback_query(call.id, f"Error: Invalid callback data: {data}", show_alert=True)
-            logging.error(f"Invalid position or direction in callback data: {data}")
+        if pos not in ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']:
+            bot.answer_callback_query(call.id, f"Error: Invalid position '{pos}' in callback data: {data}", show_alert=True)
+            logging.error(f"Invalid position in callback data: {data}")
+            return
+        if direction not in ['left', 'right']:
+            bot.answer_callback_query(call.id, f"Error: Invalid direction '{direction}' in callback data: {data}", show_alert=True)
+            logging.error(f"Invalid direction in callback data: {data}")
             return
 
         if direction == 'left':
@@ -249,6 +255,7 @@ def handle_callback_query(call):
             os.remove(output_path)
         else:
             bot.answer_callback_query(call.id, f"Error generating image: {output_path}", show_alert=True)
+            logging.error(f"Error generating image: {output_path}")
 
     except Exception as e:
         logging.exception(f"Error in callback query handler: {e}")
@@ -256,4 +263,4 @@ def handle_callback_query(call):
 
 
 bot.infinity_polling()
-                          
+
