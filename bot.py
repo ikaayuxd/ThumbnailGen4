@@ -24,7 +24,7 @@ default_stroke_width = 3
 default_center_h_pos = 0.5 # Horizontal position (0-1)
 default_center_v_pos = 2.0 # Vertical position (0-1)
 default_above_h_pos = 0.5 # Horizontal position (0-1)
-default_above_v_pos = 0.3 # Vertical position (0-1)
+default_above_v_pos = 3.0 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
 
