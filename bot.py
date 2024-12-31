@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 import time
 import textwrap
-import logging
+import
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(filename)s - %(lineno)d - %(message)s')
@@ -27,6 +27,9 @@ default_above_h_pos = 0.5 # Horizontal position (0-1)
 default_above_v_pos = 0.3 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
+
+
+user_states = {} # Properly defined global dictionary to store user states
 
 
 def load_font(font_path, size):
@@ -134,7 +137,7 @@ def process_image(message):
         with open(image_filename, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        user_states[message.chat.id] = initialize_user_state(message.chat.id, image_filename)
+        user_states[message.chat.id] = initialize_user_state(message.chat_id, image_filename)
         bot.reply_to(message, "Enter the text for the center:")
         bot.register_next_step_handler(message, get_above_text)
     else:
@@ -169,7 +172,7 @@ def generate_image(message):
     else:
         try:
             with open(output_path, 'rb') as f:
-                bot.send_photo(message.chat.id, f) # Send the image without buttons
+                bot.send_photo(message.chat.id, f)
             os.remove(output_path)
             os.remove(user_data['image'])
         except Exception as e:
@@ -178,4 +181,4 @@ def generate_image(message):
 
 
 bot.infinity_polling()
-        
+
