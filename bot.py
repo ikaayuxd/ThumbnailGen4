@@ -9,27 +9,24 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(filename)s - %(lineno)d - %(message)s')
 
-BOT_TOKEN = '6590125561:AAEO7-V8GjzPoPYSklsbDCNO8bBE75MrZks' # Replace with your bot token
+BOT_TOKEN = '6590125561:AAGk1RPkoaoFLb3mo5SHMxnXvBRDOIAbQ64' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
-default_font_size_center = 100
-default_font_size_above_below = 75
+default_font_size_center = 140
+default_font_size_above_below = 100
 default_font_path = "arial.ttf" # Or path to your preferred font. MUST exist!
-default_center_color = (0, 255, 255) # Cyan
-default_other_color = (255, 255, 255) # White
-default_stroke_width = 5
+default_center_color = (255, 255, 255) # Cyan
+default_other_color = (0, 255, 255) # White
+default_stroke_width = 3
 
-# Default positions (fractions of image width and height)
+# Default positions (fractions of image width and height) - Now fixed
 default_center_h_pos = 0.5 # Horizontal position (0-1)
 default_center_v_pos = 0.5 # Vertical position (0-1)
 default_above_h_pos = 0.5 # Horizontal position (0-1)
 default_above_v_pos = 0.3 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
-position_step = 0.05
-
-user_states = {} # Dictionary to store user states
 
 
 def load_font(font_path, size):
@@ -120,14 +117,6 @@ def initialize_user_state(chat_id, image_filename):
         'font_path': default_font_path,
         'center_color': default_center_color,
         'other_color': default_other_color,
-        'center_h_pos': default_center_h_pos,
-        'center_v_pos': default_center_v_pos,
-        'above_h_pos': default_above_h_pos,
-        'above_v_pos': default_above_v_pos,
-        'below_h_pos': default_below_h_pos,
-        'below_v_pos': default_below_v_pos,
-        'stage': 'text_input',
-        'message_id': None
     }
 
 
@@ -172,18 +161,15 @@ def generate_image(message):
                                     user_data['below_text'], user_data['center_size'], user_data['above_size'],
                                     user_data['below_size'], user_data['font_path'], user_data['center_color'],
                                     user_data['other_color'], default_stroke_width,
-                                    user_data['center_h_pos'], user_data['center_v_pos'], user_data['above_h_pos'],
-                                    user_data['above_v_pos'], user_data['below_h_pos'], user_data['below_v_pos'])
+                                    default_center_h_pos, default_center_v_pos, default_above_h_pos,
+                                    default_above_v_pos, default_below_h_pos, default_below_v_pos)
 
     if output_path.startswith("Error"):
         bot.reply_to(message, output_path)
     else:
         try:
             with open(output_path, 'rb') as f:
-                sent_message = bot.send_photo(message.chat.id, f, caption="Adjust positions using buttons below.")
-                user_data['message_id'] = sent_message.message_id
-                user_data['stage'] = 'position_adjustment'
-                add_buttons(sent_message)
+                bot.send_photo(message.chat.id, f) # Send the image without buttons
             os.remove(output_path)
             os.remove(user_data['image'])
         except Exception as e:
@@ -191,89 +177,5 @@ def generate_image(message):
             logging.exception(f"Error sending image: {e}")
 
 
-
-def add_buttons(message):
-    markup = types.InlineKeyboardMarkup()
-    button_list = []
-    positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
-    directions = ['left', 'right']
-    for pos in positions:
-        for dir in directions:
-            callback_data = f"{pos}_{dir}" # Explicitly construct callback data
-            logging.debug(f"Adding button with callback data: {callback_data}") # Log for debugging
-            button_list.append(types.InlineKeyboardButton(text=f"{pos.replace('_', ' ').title()} {dir.title()}",
-                                                          callback_data=callback_data))
-
-    for i in range(0, len(button_list), 2):
-        markup.add(button_list[i], button_list[i + 1] if i + 1 < len(button_list) else None)
-    try:
-        bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
-    except Exception as e:
-        logging.exception(f"Error editing message reply markup: {e}")
-
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback_query(call):
-    chat_id = call.message.chat.id
-    data = call.data.lower() # Convert received data to lowercase for case-insensitive comparison
-    state = user_states.get(chat_id)
-
-    if state is None:
-        bot.answer_callback_query(call.id, "Error: Session expired.", show_alert=True)
-        return
-
-    logging.debug(f"Received callback data (lowercase): {data}") # Log the lowercase data
-
-    try:
-        parts = data.split('_') # Split the lowercase data
-        if len(parts) != 2:
-            bot.answer_callback_query(call.id, f"Error: Invalid callback data format: '{data}'", show_alert=True)
-            logging.error(f"Invalid callback data format: {data}")
-            return
-
-        pos, direction = parts
-
-        # Case-insensitive validation:
-        positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
-        directions = ['left', 'right']
-
-        if pos not in positions:
-            bot.answer_callback_query(call.id, f"Error: Invalid position '{pos}' in callback data: {data}", show_alert=True)
-            logging.error(f"Invalid position in callback data: {data}")
-            return
-        if direction not in directions:
-            bot.answer_callback_query(call.id, f"Error: Invalid direction '{direction}' in callback data: {data}", show_alert=True)
-            logging.error(f"Invalid direction in callback data: {data}")
-            return
-
-        if direction == 'left':
-            state[pos] = max(0, state[pos] - position_step)
-        elif direction == 'right':
-            state[pos] = min(1, state[pos] + position_step)
-
-        output_path = add_text_to_image(state['image'], state['center_text'], state['above_text'], state['below_text'],
-                                        state['center_size'], state['above_size'], state['below_size'], state['font_path'],
-                                        state['center_color'], state['other_color'], default_stroke_width,
-                                        state['center_h_pos'], state['center_v_pos'], state['above_h_pos'],
-                                        state['above_v_pos'], state['below_h_pos'], state['below_v_pos'])
-
-        if not output_path.startswith("Error"):
-            try:
-                with open(output_path, 'rb') as f:
-                    bot.edit_message_media(media=types.InputMediaPhoto(f), chat_id=chat_id, message_id=state['message_id'],
-                                           caption="Adjust positions using buttons below.")
-                    add_buttons(call.message)
-                os.remove(output_path)
-            except Exception as e:
-                logging.exception(f"Error editing message media: {e}")
-                bot.answer_callback_query(call.id, f"Error updating image: {str(e)}", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, f"Error generating image: {output_path}", show_alert=True)
-            logging.error(f"Error generating image: {output_path}")
-
-    except Exception as e:
-        logging.exception(f"Error in callback query handler: {e}")
-        bot.answer_callback_query(call.id, f"An unexpected error occurred: {str(e)}", show_alert=True)
-
-
 bot.infinity_polling()
+        
