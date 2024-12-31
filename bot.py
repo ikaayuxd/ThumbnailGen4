@@ -215,17 +215,17 @@ def add_buttons(message):
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
     chat_id = call.message.chat.id
-    data = call.data
+    data = call.data.lower() # Convert received data to lowercase for case-insensitive comparison
     state = user_states.get(chat_id)
 
     if state is None:
         bot.answer_callback_query(call.id, "Error: Session expired.", show_alert=True)
         return
 
-    logging.debug(f"Received callback data: {data}") # Log the received data
+    logging.debug(f"Received callback data (lowercase): {data}") # Log the lowercase data
 
     try:
-        parts = data.split('_')
+        parts = data.split('_') # Split the lowercase data
         if len(parts) != 2:
             bot.answer_callback_query(call.id, f"Error: Invalid callback data format: '{data}'", show_alert=True)
             logging.error(f"Invalid callback data format: {data}")
@@ -233,11 +233,15 @@ def handle_callback_query(call):
 
         pos, direction = parts
 
-        if pos not in ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']:
+        # Case-insensitive validation:
+        positions = ['center_h', 'center_v', 'above_h', 'above_v', 'below_h', 'below_v']
+        directions = ['left', 'right']
+
+        if pos not in positions:
             bot.answer_callback_query(call.id, f"Error: Invalid position '{pos}' in callback data: {data}", show_alert=True)
             logging.error(f"Invalid position in callback data: {data}")
             return
-        if direction not in ['left', 'right']:
+        if direction not in directions:
             bot.answer_callback_query(call.id, f"Error: Invalid direction '{direction}' in callback data: {data}", show_alert=True)
             logging.error(f"Invalid direction in callback data: {data}")
             return
@@ -273,4 +277,3 @@ def handle_callback_query(call):
 
 
 bot.infinity_polling()
-        
