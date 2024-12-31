@@ -9,13 +9,13 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(filename)s - %(lineno)d - %(message)s')
 
-BOT_TOKEN = '6590125561:AAEdO5QMHKaJdK4poF0HlRGsGJP65JePAYY' # Replace with your bot token
+BOT_TOKEN = '6590125561:AAEO7-V8GjzPoPYSklsbDCNO8bBE75MrZks' # Replace with your bot token
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
 default_font_size_center = 100
 default_font_size_above_below = 75
-default_font_path = "arial.ttf" # Or path to your preferred font. Make sure it exists!
+default_font_path = "arial.ttf" # Or path to your preferred font. MUST exist!
 default_center_color = (0, 255, 255) # Cyan
 default_other_color = (255, 255, 255) # White
 default_stroke_width = 5
@@ -199,13 +199,17 @@ def add_buttons(message):
     directions = ['left', 'right']
     for pos in positions:
         for dir in directions:
-            callback_data = f"{pos}_{dir}" # Ensure consistent formatting
+            callback_data = f"{pos}_{dir}" # Explicitly construct callback data
+            logging.debug(f"Adding button with callback data: {callback_data}") # Log for debugging
             button_list.append(types.InlineKeyboardButton(text=f"{pos.replace('_', ' ').title()} {dir.title()}",
                                                           callback_data=callback_data))
 
     for i in range(0, len(button_list), 2):
         markup.add(button_list[i], button_list[i + 1] if i + 1 < len(button_list) else None)
-    bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
+    try:
+        bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=message.message_id, reply_markup=markup)
+    except Exception as e:
+        logging.exception(f"Error editing message reply markup: {e}")
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -217,6 +221,8 @@ def handle_callback_query(call):
     if state is None:
         bot.answer_callback_query(call.id, "Error: Session expired.", show_alert=True)
         return
+
+    logging.debug(f"Received callback data: {data}") # Log the received data
 
     try:
         parts = data.split('_')
@@ -248,11 +254,15 @@ def handle_callback_query(call):
                                         state['above_v_pos'], state['below_h_pos'], state['below_v_pos'])
 
         if not output_path.startswith("Error"):
-            with open(output_path, 'rb') as f:
-                bot.edit_message_media(media=types.InputMediaPhoto(f), chat_id=chat_id, message_id=state['message_id'],
-                                       caption="Adjust positions using buttons below.")
-                add_buttons(call.message)
-            os.remove(output_path)
+            try:
+                with open(output_path, 'rb') as f:
+                    bot.edit_message_media(media=types.InputMediaPhoto(f), chat_id=chat_id, message_id=state['message_id'],
+                                           caption="Adjust positions using buttons below.")
+                    add_buttons(call.message)
+                os.remove(output_path)
+            except Exception as e:
+                logging.exception(f"Error editing message media: {e}")
+                bot.answer_callback_query(call.id, f"Error updating image: {str(e)}", show_alert=True)
         else:
             bot.answer_callback_query(call.id, f"Error generating image: {output_path}", show_alert=True)
             logging.error(f"Error generating image: {output_path}")
@@ -263,4 +273,4 @@ def handle_callback_query(call):
 
 
 bot.infinity_polling()
-
+        
