@@ -13,7 +13,7 @@ BOT_TOKEN = '6590125561:AAGk1RPkoaoFLb3mo5SHMxnXvBRDOIAbQ64' # Replace with your
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
-default_font_size_center = 140
+default_font_size_center = 110
 default_font_size_above_below = 100
 default_font_path = "arial.ttf" # Or path to your preferred font. MUST exist!
 default_center_color = (255, 255, 255) # Cyan
