@@ -83,7 +83,7 @@ def add_text_to_image(image_path, center_text, above_text, below_text,
         center_y = int(height * center_v_pos - center_text_size[1] / 2)
         add_text_with_stroke(center_text, font_center, center_color, center_x, center_y, stroke_width)
 
-if above_text:
+        if above_text:
             above_text_size = draw.multiline_textsize(above_text, font=font_above_below)
             above_x = int(width * above_h_pos - above_text_size[0] / 2)
             above_y = int(height * above_v_pos - above_text_size[1] / 2)
