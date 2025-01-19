@@ -22,9 +22,9 @@ default_stroke_width = 3
 
 # Default positions (fractions of image width and height) - Now fixed
 default_center_h_pos = 0.5 # Horizontal position (0-1)
-default_center_v_pos = 0.5 # Vertical position (0-1)
+default_center_v_pos = 0.4.5 # Vertical position (0-1)
 default_above_h_pos = 0.5 # Horizontal position (0-1)
-default_above_v_pos = 0.2 # Vertical position (0-1)
+default_above_v_pos = 0.2.5 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
 
