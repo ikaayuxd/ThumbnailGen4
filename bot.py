@@ -13,8 +13,8 @@ BOT_TOKEN = '7011113724:AAEzsc4QAxGOSdhX-4azvyBui8CGLrTktAs' # Replace with your
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # Default settings
-default_font_size_center = 110
-default_font_size_above_below = 100
+default_font_size_center = 250
+default_font_size_above_below = 250
 default_font_path = "arial.ttf" # Or path to your preferred font. MUST exist!
 default_center_color = (255, 255, 255) # Cyan
 default_other_color = (0, 255, 255) # White
@@ -22,9 +22,9 @@ default_stroke_width = 3
 
 # Default positions (fractions of image width and height) - Now fixed
 default_center_h_pos = 0.5 # Horizontal position (0-1)
-default_center_v_pos = 0.4 # Vertical position (0-1)
+default_center_v_pos = 0.5 # Vertical position (0-1)
 default_above_h_pos = 0.5 # Horizontal position (0-1)
-default_above_v_pos = 0.2 # Vertical position (0-1)
+default_above_v_pos = 0.3 # Vertical position (0-1)
 default_below_h_pos = 0.5 # Horizontal position (0-1)
 default_below_v_pos = 0.7 # Vertical position (0-1)
 
