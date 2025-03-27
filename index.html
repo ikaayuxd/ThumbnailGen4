@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thumbnail Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .stroke {
+            text-shadow: 
+                -1px -1px 0 #000,  
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000;
+        }
+        .move-up {
+            margin-top: -5%; /* Move below text further up */
+        }
+        .move-down {
+            margin-top: 5%; /* Move above text, center text, and username further down */
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <h1 class="text-2xl font-bold mb-4">Thumbnail Generator</h1>
+    <div class="mb-4">
+        <input type="text" id="aboveText" placeholder="Above Text" class="border p-2 mb-2 w-72"> <!-- Reduced width -->
+        <input type="text" id="centerText" placeholder="Center Text" class="border p-2 mb-2 w-72 move-down"> <!-- Move down -->
+        <input type="text" id="usernameText" placeholder="@Username" class="border p-2 mb-2 w-72 move-down"> <!-- Move down -->
+        <input type="text" id="belowText" placeholder="Below Text" class="border p-2 mb-2 w-72"> <!-- Reduced width -->
+    </div>
+    <input type="file" id="backgroundImage" accept="image/*" class="mb-4">
+    <button id="generateButton" class="bg-blue-500 text-white p-2 rounded">Generate Thumbnail</button>
+    <a id="downloadLink" class="hidden" download="thumbnail.png">Download Thumbnail</a>
+    <div id="thumbnail" class="mt-4 border p-4 w-80 h-48 relative">
+        <img id="bgImage" class="absolute inset-0 w-full h-full object-cover" style="display:none;">
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <h2 id="above" class="text-xl font-bold stroke move-down" style="color: #00E4FF;"></h2>
+            <h1 id="center" class="text-4xl font-bold text-white"></h1>
+            <h3 id="username" class="text-lg font-bold text-white move-down"></h3> <!-- New username display -->
+            <h3 id="below" class="text-xl font-bold stroke move-up" style="color: #00E4FF;"></h3>
+            <p class="absolute bottom-0 text-sm text-white move-up">Paid And Premium Content Absolutely Free</p> <!-- Move up -->
+        </div>
+    </div>
+    <script>
+        document.getElementById('generateButton').onclick = function() {
+            const aboveText = document.getElementById('aboveText').value;
+            const centerText = document.getElementById('centerText').value;
+            const usernameText = document.getElementById('usernameText').value;
+            const belowText = document.getElementById('belowText').value;
+            const bgImage = document.getElementById('backgroundImage').files[0];
+
+            if (bgImage) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('bgImage').src = e.target.result;
+                    document.getElementById('bgImage').style.display = 'block';
+                }
+                reader.readAsDataURL(bgImage);
+            }
+
+            document.getElementById('above').innerText = aboveText;
+            document.getElementById('center').innerText = centerText;
+            document.getElementById('username').innerText = usernameText; // Display username
+            document.getElementById('below').innerText = belowText;
+
+            // Create downloadable image
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 320; // Set canvas width
+            canvas.height = 180; // Set canvas height
+
+            const bgImg = new Image();
+            bgImg.src = e.target.result;
+            bgImg.onload = function() {
+                ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#00E4FF";
+                ctx.font = "bold 20px Arial";
+                ctx.fillText(aboveText, 10, 30);
+                ctx.font = "bold 40px Arial";
+                ctx.fillStyle = "white";
+                ctx.fillText(centerText, 10, 90);
+                ctx.fillStyle = "#00E4FF";
+                ctx.font = "bold 20px Arial";
+                ctx.fillText(belowText, 10, 120);
+                ctx.fillStyle = "white";
+                ctx.font = "12px Arial";
+                ctx.fillText("@LegendxTricks\nPaid And Premium Content Absolutely Free", 100, 100);
+
+                // Set the download link
+                document.getElementById('downloadLink').href = canvas.toDataURL('image/png');
+                document.getElementById('downloadLink').classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
