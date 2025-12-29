@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 # --- Configuration ---
-TOKEN = "7071486435:AAFD1TVkz9G1EuwQ39AEVmDJVn00vnSDgUc"
+TOKEN = "7071486435:AAGJc33MWsA0d44qzvy8PqLul7H2AG9Il1Y"
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # States
