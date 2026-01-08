@@ -1,172 +1,212 @@
-import logging
+#!/usr/bin/env python3
+# Advanced TTS Telegram Bot with XTTS-v2 - Local, Multi-lang, Voice Cloning
+
+import asyncio
 import io
-from PIL import Image, ImageDraw, ImageFont, ImageOps
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
+import logging
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+import torch
+from flask import Flask, request
+from telegram import Update, InlineQueryResultVoice, Voice
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
     ContextTypes,
-    ConversationHandler
+    ConversationHandler,
+    InlineQueryHandler,
+    MessageHandler,
+    filters,
 )
+from TTS.api import TTS
 
-# --- Configuration ---
-TOKEN = "7071486435:AAGJc33MWsA0d44qzvy8PqLul7H2AG9Il1Y"
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
+# Enable logging
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# States
-START_ROUTE, EDIT_ROUTE = range(2)
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN env var required")
 
-# --- Utility Functions ---
+PORT = int(os.environ.get("PORT", 8080))
+URL = f"https://{request.host}" if request else "https://yourapp.onrender.com"  # Update post-deploy
 
-def get_main_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("✏️ Line 1 (Top)", callback_data='L1'),
-         InlineKeyboardButton("✏️ Line 2 (Hero)", callback_data='L2')],
-        [InlineKeyboardButton("✏️ Line 3 (@User)", callback_data='L3'),
-         InlineKeyboardButton("✏️ Line 4 (Sub)", callback_data='L4')],
-        [InlineKeyboardButton("✏️ Line 5 (Footer)", callback_data='L5')],
-        [InlineKeyboardButton("🖼 Change Background", callback_data='CHANGE_BG')],
-        [InlineKeyboardButton("✅ GENERATE FINAL", callback_data='RENDER')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
 
-async def generate_banner(data):
-    """Core rendering engine with rounded corners and border."""
-    width, height = 1200, 675
-    radius, border_w = 60, 14
-    
-    # 1. Background
-    bg_stream = io.BytesIO(data['bg_bytes'])
-    bg = Image.open(bg_stream).convert("RGBA")
-    bg = ImageOps.fit(bg, (width, height), centering=(0.5, 0.5))
-    
-    # 2. Dark Overlay
-    overlay = Image.new('RGBA', (width, height), (0, 0, 0, 160))
-    bg = Image.alpha_composite(bg, overlay)
-    
-    # 3. Mask & Rounded Corners
-    mask = Image.new('L', (width, height), 0)
-    draw_mask = ImageDraw.Draw(mask)
-    draw_mask.rounded_rectangle([0, 0, width, height], radius=radius, fill=255)
-    
-    final_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-    final_img.paste(bg, (0, 0), mask=mask)
-    draw = ImageDraw.Draw(final_img)
-    
-    # 4. White Border
-    draw.rounded_rectangle(
-        [border_w//2, border_w//2, width - border_w//2, height - border_w//2], 
-        radius=radius, outline="white", width=border_w
-    )
+# State for conversation (voice upload)
+WAITING_VOICE, WAITING_TEXT = range(2)
 
-    # 5. Text Rendering (Using default sizes, scalable)
-    draw.text((600, 160), data.get('t1', 'TOP TEXT').upper(), fill="#00e5ff", anchor="mm", font_size=45)
-    draw.text((600, 280), data.get('t2', 'MAIN TITLE').upper(), fill="white", anchor="mm", font_size=110)
-    draw.text((600, 380), data.get('t3', '@username'), fill="white", anchor="mm", font_size=55)
-    draw.text((600, 500), data.get('t4', 'SUBTITLE TEXT').upper(), fill="#00e5ff", anchor="mm", font_size=75)
-    draw.text((600, 610), data.get('t5', 'Footer content here'), fill="white", anchor="mm", font_size=40)
+# Rate limit: user_id -> last_time
+ratelimit = {}
 
-    # Output
-    bio = io.BytesIO()
-    final_img.convert("RGB").save(bio, 'PNG')
-    bio.seek(0)
-    return bio
+VOICES_DIR = Path("voices")
+SAMPLE_VOICES = ["en_sample.wav", "hi_sample.wav"]  # Add more
 
-# --- Bot Handlers ---
+app = Flask(__name__)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Default values
-    context.user_data.update({
-        't1': 'JAILBREAK PROMPT FOR',
-        't2': 'LEGEND × TRICKS',
-        't3': '@LEGENDXTRICKS',
-        't4': "CHAT GPT AND OTHER AI'S",
-        't5': 'Premium And Paid Content Absolutely Free'
-    })
-    
+async def rate_limit_check(user_id: int) -> bool:
+    now = asyncio.get_event_loop().time()
+    if user_id in ratelimit and now - ratelimit[user_id] < 10:  # 10s cooldown
+        return False
+    ratelimit[user_id] = now
+    return True
+
+def synthesize(text: str, lang: str = "en", speaker_wav: str = None, speed: float = 1.0) -> bytes:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_in, \
+         tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_out:
+        tts.tts_to_file(
+            text=text[:400],  # Limit length for CPU
+            speaker_wav=speaker_wav,
+            language=lang,
+            file_path=tmp_in.name,
+            speed=speed
+        )
+        subprocess.run(["ffmpeg", "-i", tmp_in.name, "-c:a", "libopus", tmp_out.name], check=True)
+        with open(tmp_out.name, "rb") as f:
+            audio = f.read()
+        os.unlink(tmp_in.name)
+        os.unlink(tmp_out.name)
+        return audio
+
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(), application.bot)
+    await application.process_update(update)
+    return "", 200
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👋 *Welcome to Legend Banner Studio!*\n\n"
-        "To begin, please send the **Background Image** you want to use.",
-        parse_mode=constants.ParseMode.MARKDOWN
+        "🚀 Futuristic TTS Bot!
+
+"
+        "/tts <text> [--lang en|hi|es] [--speed 1.0] [--voice sample]
+"
+        "/clone - Upload voice then text
+"
+        "/voices - Samples
+"
+        "@bot text (inline)",
+        parse_mode=ParseMode.HTML
     )
-    return START_ROUTE
 
-async def handle_bg(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Visual Guidance: Download BG and show control panel
-    photo = await update.message.photo[-1].get_file()
-    context.user_data['bg_bytes'] = await photo.download_as_bytearray()
-    
-    await update.message.reply_text(
-        "✅ *Background Loaded!*\n\nUse the buttons below to customize each line. When ready, click Generate.",
-        reply_markup=get_main_keyboard(),
-        parse_mode=constants.ParseMode.MARKDOWN
-    )
-    return EDIT_ROUTE
+async def voices(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = "🎤 Sample Voices:
+"
+    for v in SAMPLE_VOICES:
+        audio = synthesize("Voice sample.", speaker_wav=str(VOICES_DIR / v), lang="en")
+        await update.message.reply_voice(io.BytesIO(audio), caption=v)
+    await update.message.reply_text("Upload your 6s WAV for /clone")
 
-async def button_tap(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'RENDER':
-        await query.edit_message_text("⏳ *Rendering your high-quality banner...*", parse_mode=constants.ParseMode.MARKDOWN)
-        context.application.create_task(context.bot.send_chat_action(chat_id=query.message.chat_id, action="upload_photo"))
-        
-        image_result = await generate_banner(context.user_data)
-        await query.message.reply_photo(photo=image_result, caption="🚀 *Here is your professional banner!*", parse_mode=constants.ParseMode.MARKDOWN)
-        return EDIT_ROUTE
+async def tts_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await rate_limit_check(update.effective_user.id):
+        await update.message.reply_text("⏳ Wait 10s (rate limit)")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /tts Hello --lang en --voice en_sample.wav --speed 1.2")
+        return
+    text = " ".join(context.args).split("--")[0].strip()
+    args = " ".join(context.args).split("--")[1:]
+    lang = re.search(r"langs+(w+)", " ".join(args), re.I)
+    lang = lang.group(1) if lang else "en"
+    voice = re.search(r"voices+([w_]+.wav)", " ".join(args), re.I)
+    voice_path = str(VOICES_DIR / (voice.group(1) if voice else "en_sample.wav")) if voice else None
+    speed_match = re.search(r"speeds+([d.]+)", " ".join(args), re.I)
+    speed = float(speed_match.group(1)) if speed_match else 1.0
 
-    if query.data == 'CHANGE_BG':
-        await query.edit_message_text("🖼 Please send a new **Background Image**.")
-        return START_ROUTE
+    try:
+        audio = synthesize(text, lang, voice_path, speed)
+        await update.message.reply_voice(io.BytesIO(audio), title=text[:64])
+    except Exception as e:
+        logger.error(e)
+        await update.message.reply_text("❌ Error: Short text, check voice/lang")
 
-    # Handle text editing requests
-    context.user_data['editing'] = query.data
-    labels = {"L1": "Line 1 (Cyan Top)", "L2": "Line 2 (White Hero)", "L3": "Line 3 (Handle)", "L4": "Line 4 (Cyan Sub)", "L5": "Line 5 (Footer)"}
-    await query.edit_message_text(f"📝 Send the new text for: *{labels[query.data]}*", parse_mode=constants.ParseMode.MARKDOWN)
-    return EDIT_ROUTE
+async def receive_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    voice_file = await update.voice.get_file()
+    voice_path = f"/tmp/{update.effective_user.id}.wav"
+    await voice_file.download_to_drive(voice_path)
+    context.user_data["custom_voice"] = voice_path
+    await update.message.reply_text("✅ Voice saved! Send text to synthesize.")
+    return WAITING_TEXT
 
-async def update_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = context.user_data.get('editing')
-    if target:
-        key = target.lower().replace('l', 't')
-        context.user_data[key] = update.message.text
-        
-    await update.message.reply_text(
-        "✅ *Text Updated!* What's next?",
-        reply_markup=get_main_keyboard(),
-        parse_mode=constants.ParseMode.MARKDOWN
-    )
-    return EDIT_ROUTE
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Session ended. Type /start to begin.")
+async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not await rate_limit_check(update.effective_user.id):
+        return WAITING_TEXT
+    text = update.message.text
+    voice_wav = context.user_data.get("custom_voice")
+    if not voice_wav:
+        await update.message.reply_text("❌ No voice uploaded. Use /clone first.")
+        return ConversationHandler.END
+    try:
+        audio = synthesize(text, "en", voice_wav)  # Default en for clone
+        await update.message.reply_voice(io.BytesIO(audio), caption="Cloned!")
+        os.unlink(voice_wav)
+        context.user_data.pop("custom_voice", None)
+    except Exception as e:
+        logger.error(e)
+        await update.message.reply_text("❌ Synthesis failed.")
     return ConversationHandler.END
 
-# --- Main ---
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if "custom_voice" in context.user_data:
+        os.unlink(context.user_data["custom_voice"])
+    context.user_data.clear()
+    await update.message.reply_text("Cancelled.")
+    return ConversationHandler.END
+
+async def inline_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.inline_query.query or "Demo TTS"
+    if len(query) > 200:
+        return
+    # Simple inline: use default
+    try:
+        audio = synthesize(query[:100])
+        results = [InlineQueryResultVoice(
+            id="1", voice=io.BytesIO(audio),
+            title=query[:64], caption=f"{query} (en default)"
+        )]
+        await update.inline_query.answer(results, cache_time=1)
+    except:
+        pass  # Silent fail on inline
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    global application
+    application = (
+        Application.builder().token(TOKEN).concurrent_updates(True).build()
+    )
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("clone", receive_voice)],
         states={
-            START_ROUTE: [MessageHandler(filters.PHOTO, handle_bg)],
-            EDIT_ROUTE: [
-                CallbackQueryHandler(button_tap),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, update_text),
-                MessageHandler(filters.PHOTO, handle_bg)
-            ],
+            WAITING_VOICE: [MessageHandler(filters.VOICE | filters.AUDIO, receive_voice)],
+            WAITING_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    app.add_handler(conv_handler)
-    print("Professional Legend Bot is running...")
-    app.run_polling()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("voices", voices))
+    application.add_handler(CommandHandler("tts", tts_cmd))
+    application.add_handler(conv_handler)
+    application.add_handler(InlineQueryHandler(inline_tts))
+    application.add_handler(MessageHandler(filters.AUDIO | filters.VOICE, voices))  # Fallback
+
+    # Webhook in production
+    if os.getenv("ENV") == "production":
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="/webhook",
+            webhook_url=f"{URL}/webhook"
+        )
+    else:
+        application.run_polling()
 
 if __name__ == "__main__":
+    VOICES_DIR.mkdir(exist_ok=True)
     main()
-    
