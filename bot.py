@@ -29,7 +29,7 @@ from TTS.api import TTS
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = ("6590125561:AAF-RwnhDkmgSB-F2NtyxbXvCidllzAUZqc")
 if not TOKEN:
     raise ValueError("BOT_TOKEN env var required")
 
