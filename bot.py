@@ -6,35 +6,71 @@ import os
 import re
 import subprocess
 import tempfile
-from pathlib import Path
 import torch
-from quart import Flask, request
+from pathlib import Path
+from flask import Flask, request, jsonify
 from telegram import Update, InlineQueryResultVoice
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, InlineQueryHandler, MessageHandler, filters
+from telegram.ext import (
+    Application, CommandHandler, ContextTypes, ConversationHandler, 
+    InlineQueryHandler, MessageHandler, filters
+)
 from TTS.api import TTS
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+# Logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Config
 TOKEN = ("6590125561:AAF-RwnhDkmgSB-F2NtyxbXvCidllzAUZqc")
 if not TOKEN:
-    raise ValueError("BOT_TOKEN env var required")
+    raise ValueError("BOT_TOKEN environment variable required")
 
 PORT = int(os.environ.get("PORT", 8080))
+HOST = "0.0.0.0"
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# TTS Setup
+device = "cpu"  # Render has no GPU
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
 
+# Bot state
 ratelimit = {}
 VOICES_DIR = Path("voices")
-SAMPLE_VOICES = ["en_sample.wav", "hi_sample.wav"]
 WAITING_VOICE, WAITING_TEXT = range(2)
-
-app = Flask(__name__)
+SAMPLE_VOICES = ["en_sample.wav"]
 application = None
 
+# Flask app
+app = Flask(__name__)
+
+def synthesize(text, lang="en", speaker_wav=None, speed=1.0):
+    """Generate TTS audio as OGG bytes"""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav, \
+         tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_ogg:
+        
+        # Generate WAV
+        tts.tts_to_file(
+            text=text[:300],  # Render CPU limit
+            speaker_wav=speaker_wav,
+            language=lang,
+            file_path=tmp_wav.name
+        )
+        
+        # Convert to OGG Opus (Telegram format)
+        subprocess.run([
+            "ffmpeg", "-y", "-i", tmp_wav.name, 
+            "-c:a", "libopus", "-b:a", "64k", tmp_ogg.name
+        ], check=True, capture_output=True)
+        
+        # Read and cleanup
+        with open(tmp_ogg.name, "rb") as f:
+            audio = f.read()
+        os.unlink(tmp_wav.name)
+        os.unlink(tmp_ogg.name)
+        return audio
+
 async def rate_limit_check(user_id):
+    """10s cooldown per user"""
     loop = asyncio.get_event_loop()
     now = loop.time()
     if user_id in ratelimit and now - ratelimit[user_id] < 10:
@@ -42,130 +78,233 @@ async def rate_limit_check(user_id):
     ratelimit[user_id] = now
     return True
 
-def synthesize(text, lang="en", speaker_wav=None, speed=1.0):
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_in, tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_out:
-        tts.tts_to_file(text=text[:400], speaker_wav=speaker_wav, language=lang, file_path=tmp_in.name)
-        subprocess.run(["ffmpeg", "-i", tmp_in.name, "-c:a", "libopus", tmp_out.name], check=True, capture_output=True)
-        with open(tmp_out.name, "rb") as f:
-            audio = f.read()
-        os.unlink(tmp_in.name)
-        os.unlink(tmp_out.name)
-        return audio
-
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    json_data = await request.get_json()
-    update = Update.de_json(json_data, application.bot)
-    await application.process_update(update)
-    return "", 200
-
+# Bot Handlers
 async def start(update, context):
-    text = "🚀 Futuristic TTS Bot! /tts <text> [--lang en|hi] [--voice sample] [--speed 1.2] /clone /voices Inline: @bot text"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        "🚀 Advanced TTS Bot
+
+"
+        "• /tts Hello world --lang en --voice en_sample.wav
+"
+        "• /clone - Upload voice → send text
+"
+        "• /voices - Hear samples
+"
+        "• @botquery - Inline anywhere",
+        parse_mode=ParseMode.HTML
+    )
 
 async def voices(update, context):
-    msg = "🎤 Samples:"
-    await update.message.reply_text(msg)
-    for v in SAMPLE_VOICES:
-        p = VOICES_DIR / v
-        if p.exists():
-            audio = synthesize("Voice sample.", speaker_wav=str(p), lang="en")
-            await update.message.reply_voice(io.BytesIO(audio), caption=v)
+    await update.message.reply_text("🎤 Voice Samples:")
+    for voice_file in SAMPLE_VOICES:
+        voice_path = VOICES_DIR / voice_file
+        if voice_path.exists():
+            try:
+                audio = synthesize("This is a voice sample.", speaker_wav=str(voice_path))
+                await update.message.reply_voice(
+                    io.BytesIO(audio), 
+                    caption=f"Sample: {voice_file}"
+                )
+            except Exception as e:
+                logger.error(f"Voice sample error: {e}")
 
 async def tts_cmd(update, context):
     if not await rate_limit_check(update.effective_user.id):
-        await update.message.reply_text("⏳ Wait 10s")
+        await update.message.reply_text("⏳ Wait 10 seconds (rate limit)")
         return
+    
     if not context.args:
-        await update.message.reply_text("Usage: /tts Hello --lang en --voice en_sample.wav --speed 1.2")
+        await update.message.reply_text(
+            "Usage:
+/tts Hello --lang en --voice en_sample.wav --speed 1.2"
+        )
         return
+    
+    # Parse args
     args_str = " ".join(context.args)
     text = args_str.split("--")[0].strip()
-    params = " ".join(args_str.split("--")[1:])
-    lang_match = re.search(r"langs+(w+)", params, re.I)
-    lang = lang_match.group(1) if lang_match else "en"
-    voice_match = re.search(r"voices+([w_]+.wav)", params, re.I)
-    voice_path = str(VOICES_DIR / voice_match.group(1)) if voice_match else None
-    speed_match = re.search(r"speeds+([d.]+)", params, re.I)
-    speed = float(speed_match.group(1)) if speed_match else 1.0
-
+    
+    lang = "en"
+    voice_path = None
+    speed = 1.0
+    
+    if "--" in args_str:
+        params = " ".join(args_str.split("--")[1:])
+        lang_match = re.search(r'langs+(w+)', params, re.I)
+        if lang_match:
+            lang = lang_match.group(1)
+        
+        voice_match = re.search(r'voices+([w_]+.wav)', params, re.I)
+        if voice_match:
+            voice_path = str(VOICES_DIR / voice_match.group(1))
+        
+        speed_match = re.search(r'speeds+([d.]+)', params, re.I)
+        if speed_match:
+            speed = float(speed_match.group(1))
+    
     try:
         audio = synthesize(text, lang, voice_path, speed)
-        await update.message.reply_voice(io.BytesIO(audio), title=text[:64])
+        await update.message.reply_voice(
+            io.BytesIO(audio),
+            title=text[:64],
+            caption=f"Lang: {lang} | Speed: {speed}x"
+        )
     except Exception as e:
-        logger.error(str(e))
-        await update.message.reply_text("❌ Error: Short text, valid lang/voice")
+        logger.error(f"TTS error: {e}")
+        await update.message.reply_text(
+            "❌ Error generating audio.
+"
+            "• Keep text short (<300 chars)
+"
+            "• Use valid language codes
+"
+            "• Check voice file exists"
+        )
+
+async def clone_voice(update, context):
+    """Start voice cloning conversation"""
+    await update.message.reply_text(
+        "🎤 Send a voice message (6-10 seconds, clear speech)"
+    )
+    return WAITING_VOICE
 
 async def receive_voice(update, context):
-    voice_file = await update.message.voice.get_file() if update.message.voice else await update.message.audio.get_file()
-    voice_path = f"/tmp/{update.effective_user.id}.ogg"
-    await voice_file.download_to_drive(voice_path)
-    # Convert to wav if needed
-    wav_path = voice_path.replace(".ogg", ".wav")
-    subprocess.run(["ffmpeg", "-i", voice_path, wav_path], check=True, capture_output=True)
-    os.unlink(voice_path)
+    """Receive and save uploaded voice"""
+    if update.message.voice:
+        voice_file = await update.message.voice.get_file()
+    elif update.message.audio:
+        voice_file = await update.message.audio.get_file()
+    else:
+        await update.message.reply_text("Please send a voice message")
+        return WAITING_VOICE
+    
+    # Download and convert
+    temp_path = f"/tmp/{update.effective_user.id}.ogg"
+    wav_path = f"/tmp/{update.effective_user.id}.wav"
+    
+    await voice_file.download_to_drive(temp_path)
+    
+    # Convert to WAV for XTTS
+    subprocess.run([
+        "ffmpeg", "-y", "-i", temp_path, wav_path, "-ar", "22050"
+    ], check=True, capture_output=True)
+    os.unlink(temp_path)
+    
     context.user_data["custom_voice"] = wav_path
-    await update.message.reply_text("✅ Voice cloned! Send text.")
+    await update.message.reply_text("✅ Voice cloned! Now send text to synthesize.")
     return WAITING_TEXT
 
 async def receive_text(update, context):
+    """Generate TTS with cloned voice"""
     if not await rate_limit_check(update.effective_user.id):
+        await update.message.reply_text("⏳ Wait 10 seconds")
         return WAITING_TEXT
+    
     text = update.message.text
-    voice_wav = context.user_data.get("custom_voice")
-    if not voice_wav:
-        await update.message.reply_text("❌ No voice. /clone first.")
+    voice_path = context.user_data.get("custom_voice")
+    
+    if not voice_path or not os.path.exists(voice_path):
+        await update.message.reply_text("❌ No voice saved. Use /clone first.")
         return ConversationHandler.END
+    
     try:
-        audio = synthesize(text, "en", voice_wav)
-        await update.message.reply_voice(io.BytesIO(audio), caption="Cloned!")
-        if os.path.exists(voice_wav):
-            os.unlink(voice_wav)
-        context.user_data.pop("custom_voice", None)
+        audio = synthesize(text, "en", voice_path)
+        await update.message.reply_voice(
+            io.BytesIO(audio),
+            caption="🎙️ Voice cloned successfully!"
+        )
     except Exception as e:
-        logger.error(str(e))
-        await update.message.reply_text("❌ Failed.")
+        logger.error(f"Clone synthesis error: {e}")
+        await update.message.reply_text("❌ Voice synthesis failed")
+    
+    # Cleanup
+    if os.path.exists(voice_path):
+        os.unlink(voice_path)
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update, context):
-    if "custom_voice" in context.user_data and os.path.exists(context.user_data["custom_voice"]):
-        os.unlink(context.user_data["custom_voice"])
+    """Cancel conversation"""
+    voice_path = context.user_data.get("custom_voice")
+    if voice_path and os.path.exists(voice_path):
+        os.unlink(voice_path)
     context.user_data.clear()
-    await update.message.reply_text("Cancelled.")
+    await update.message.reply_text("❌ Cancelled")
     return ConversationHandler.END
 
 async def inline_tts(update, context):
+    """Inline query handler"""
     query = update.inline_query.query
     if not query or len(query) > 100:
         return
+    
     try:
-        audio = synthesize(query)
-        results = [InlineQueryResultVoice(id="tts", voice=io.BytesIO(audio), title=query[:64])]
-        await update.inline_query.answer(results, cache_time=5)
+        audio = synthesize(query[:100])
+        results = [InlineQueryResultVoice(
+            id="tts1",
+            voice=io.BytesIO(audio),
+            title=query[:64],
+            caption=f"{query[:100]} (en)"
+        )]
+        await update.inline_query.answer(results, cache_time=10)
     except:
-        pass
+        pass  # Silent fail for inline
 
-def main():
+# Flask Routes
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """Telegram webhook endpoint"""
+    try:
+        json_data = request.get_json()
+        update = Update.de_json(json_data, application.bot)
+        asyncio.run(application.process_update(update))
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/")
+def home():
+    return "TTS Bot is running!"
+
+# Bot Setup
+def create_application():
     global application
     application = Application.builder().token(TOKEN).concurrent_updates(True).build()
-
+    
+    # Conversation handler for voice cloning
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("clone", receive_voice)],
+        entry_points=[CommandHandler("clone", clone_voice)],
         states={
             WAITING_VOICE: [MessageHandler(filters.VOICE | filters.AUDIO, receive_voice)],
             WAITING_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
-
+    
+    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("voices", voices))
     application.add_handler(CommandHandler("tts", tts_cmd))
     application.add_handler(conv_handler)
     application.add_handler(InlineQueryHandler(inline_tts))
+    
+    return application
 
-    app.run(host="0.0.0.0", port=PORT, debug=False)
+def main():
+    # Create directories
+    VOICES_DIR.mkdir(exist_ok=True)
+    
+    # Initialize bot
+    create_application()
+    
+    # Development polling
+    if os.getenv("ENV") != "production":
+        logger.info("Starting in polling mode...")
+        application.run_polling(drop_pending_updates=True)
+    else:
+        logger.info(f"Starting webhook server on {HOST}:{PORT}")
+        app.run(host=HOST, port=PORT, debug=False)
 
 if __name__ == "__main__":
-    VOICES_DIR.mkdir(exist_ok=True)
     main()
