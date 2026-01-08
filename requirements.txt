@@ -1,6 +1,6 @@
 TTS==0.22.0
 python-telegram-bot==21.2
-flask==3.0.3
+quart==0.19.4
 torch==2.4.1
 torchaudio==2.4.1
 gunicorn==22.0.0
